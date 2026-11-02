@@ -1,0 +1,23 @@
+name: Build
+
+# Builds, tests and packages every push to main and every pull request, so a release tag never meets a
+# compile error first. The zip is kept as a run artifact for testing.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build, test and package
+        run: ./scripts/package_release.ps1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ygol-access-build
+          path: dist/*.zip
