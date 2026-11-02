@@ -2,7 +2,7 @@
 
 The newest version comes first. Each version lists the features and fixes you'll notice; small internal changes are left out.
 
-## Unreleased
+## 0.1.0 (November 3, 2026)
 
 The first release.
 
