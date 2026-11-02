@@ -16,3 +16,8 @@ bool GameSection(const char* name, uint8_t** begin, uint8_t** end);
 // Finds a pattern in YuGiOh.exe's .text section. Returns nullptr (and logs) unless there is
 // exactly one match, so a game update can't silently point a hook at the wrong code.
 uint8_t* FindInGame(const char* name, const char* pattern);
+
+// Game code or classes the mod looked for and didn't find (FindInGame, FindVTable): non-zero after a game
+// update moved something, so the player can be told.
+void NoteGameMiss();
+int GameMisses();

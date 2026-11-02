@@ -4,6 +4,8 @@
 #include <windows.h>
 #include <MinHook.h>
 
+#include <cstdio>
+
 #include "duel.h"
 #include "menu.h"
 #include "scan.h"
@@ -39,6 +41,7 @@ static DWORD g_hotkeyThread;
 
 // Mod hotkeys, handled only while the game has focus and hidden from the game. None is bound by the game's
 // default keyboard layout (Help & Options > Controls).
+//   F1  list these hotkeys
 //   F5  read all text on screen
 //   R   read the player's name and DP (in the deck editor: the deck's card counts)
 //   H   read both duelists' life points
@@ -47,7 +50,7 @@ static DWORD g_hotkeyThread;
 //   F   field (monster, spell/trap and field zones)      G   graveyard        V   banished cards
 //   U   hand (the opponent's: a count)                    E   Extra Deck       T   turn, phase, deck counts
 static bool IsHotkey(DWORD vk) {
-    return vk == VK_F5 || vk == 'R' || vk == 'H' || vk == 'I' || vk == 'F' || vk == 'G' || vk == 'V' || vk == 'U' ||
+    return vk == VK_F1 || vk == VK_F5 || vk == 'R' || vk == 'H' || vk == 'I' || vk == 'F' || vk == 'G' || vk == 'V' || vk == 'U' ||
            vk == 'E' || vk == 'T';
 }
 
@@ -97,7 +100,15 @@ static DWORD WINAPI Startup(void*) {
     } else if (!DuelHooksInstall()) {
         Log("Duel hooks not installed");
     }
-    if (SpeechInit()) Speak("Yu-Gi-Oh accessibility mod loaded");
+    if (SpeechInit()) {
+        Speak("Yu-Gi-Oh accessibility mod loaded. Press F1 for hotkeys.");
+        if (int missed = GameMisses()) {
+            char warning[200];
+            sprintf_s(warning, "Warning: %d parts of the game were not found, probably because the game updated. Some speech "
+                      "will be missing until the mod is updated.", missed);
+            Speak(warning, false);
+        }
+    }
 
     // Hotkeys come from a low-level keyboard hook, which needs a message loop on this thread.
     // The hook only posts a message; the work runs here, outside the hook's time limit.
@@ -106,6 +117,13 @@ static DWORD WINAPI Startup(void*) {
     MSG msg;
     while (GetMessageW(&msg, nullptr, 0, 0) > 0) {
         if (msg.message != WM_APP_HOTKEY) continue;
+        if (msg.wParam == VK_F1) {
+            Log("hotkey help");
+            Speak("Hotkeys. F1: this help. F5: read the screen. R: your name and DP; in the deck editor, the deck's "
+                  "card counts. H: life points. I: the focused card's full info. In a duel: F field, U hand, "
+                  "G graveyard, V banished, E Extra Deck, T turn and phase. Hold Alt with F, U, G, V or E for the "
+                  "opponent's.");
+        }
         if (msg.wParam == VK_F5) SpeakScreen();
         if (msg.wParam == 'R' && !MenuSpeakDeckStats()) SpeakStatus();  // deck editor: its stats; elsewhere: DP
         if (msg.wParam == 'H') SpeakLifePoints();

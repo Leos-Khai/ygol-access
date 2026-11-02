@@ -63,12 +63,20 @@ bool GameSection(const char* name, uint8_t** begin, uint8_t** end) {
     return false;
 }
 
+static int g_misses;
+void NoteGameMiss() { ++g_misses; }
+int GameMisses() { return g_misses; }
+
 uint8_t* FindInGame(const char* name, const char* pattern) {
     uint8_t *begin, *end;
-    if (!GameSection(".text", &begin, &end)) return nullptr;
+    if (!GameSection(".text", &begin, &end)) {
+        NoteGameMiss();
+        return nullptr;
+    }
     size_t count = CountPattern(begin, end, pattern);
     if (count != 1) {
         Log("Pattern %s: %zu matches, expected 1", name, count);
+        NoteGameMiss();
         return nullptr;
     }
     auto* found = (uint8_t*)FindPattern(begin, end, pattern);

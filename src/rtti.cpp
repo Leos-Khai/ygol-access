@@ -41,6 +41,7 @@ void** FindVTable(const char* decoratedName) {
     }
     if (!name) {
         Log("RTTI: no type %s", decoratedName);
+        NoteGameMiss();
         return nullptr;
     }
     int32_t typeRva = (int32_t)(name - 16 - base);
@@ -53,6 +54,7 @@ void** FindVTable(const char* decoratedName) {
         }
     }
     Log("RTTI: no vtable for %s", decoratedName);
+    NoteGameMiss();
     return nullptr;
 }
 

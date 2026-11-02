@@ -107,6 +107,10 @@ Notes (all in `src/duel.cpp` unless said):
 - In a duel, Enter on your Deck opens a menu whose first item is Surrender.
 
 ## 6. Release
-- [ ] Hotkey help and README for players
-- [ ] Re-check hooks after each game update
-- [ ] Package: proxy DLL, `prism.dll`, licenses
+- [x] Hotkey help and README for players: F1 reads the hotkeys; `README.html` (install, hotkeys, what is read, limitations) ships in the zip
+- [x] Re-check hooks after each game update: every `FindInGame` / `FindVTable` miss is counted (`GameMisses()`, `src/scan.cpp`), and a non-zero count is spoken after "mod loaded" as a warning that the game probably updated
+- [x] Package: proxy DLL, `prism.dll`, licenses (`scripts/package_release.ps1`, built and published by `.github/workflows/release.yml` on a `v*` tag; `/release` skill drives it)
+
+Notes:
+- After a game update: start the game, read `ygol-access.log` for "expected 1" and "RTTI: no" lines, find the moved code, check new patterns with `tools/patcheck.py`, then release.
+- `DUEL_DIALOG_SELECT_EFFECT` is a struct (`.?AU`) in this build; the `.?AV` name is only the fallback, so a normal start has no misses.

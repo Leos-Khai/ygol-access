@@ -41,7 +41,7 @@ jobs:
           $zip = "dist/ygol-access-$env:VERSION.zip"
           $notes = Join-Path $env:RUNNER_TEMP 'notes.md'
           $tagNotes = (git tag -l --format='%(contents)' $env:TAG) -join "`n"
-          $install = "## Install`n`nClose the game. Unzip, then copy ``xinput9_1_0.dll`` and ``prism.dll`` into the game folder, next to ``YuGiOh.exe`` (in Steam: right-click the game, Manage, Browse local files). To uninstall, delete those two files."
+          $install = "## Install`n`nClose the game. Unzip, then copy ``xinput9_1_0.dll`` and ``prism.dll`` into the game folder, next to ``YuGiOh.exe`` (in Steam: right-click the game, Manage, Browse local files). To uninstall, delete those two files. README.html in the zip lists the hotkeys and what is read."
           "$tagNotes`n`n$install" | Set-Content $notes -Encoding utf8
           gh release view $env:TAG *> $null
           if ($LASTEXITCODE -eq 0) {

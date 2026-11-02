@@ -675,8 +675,9 @@ bool DuelHooksInstall() {
         vt && MH_CreateHook(vt[5], (void*)&DuelDispatchHook, (void**)&g_duelDispatch) == MH_OK)
         MH_EnableHook(vt[5]);
     else Log("Could not hook ExGameDuel::OnDispatch");
-    g_effectDialogVTable = FindVTable(".?AVDUEL_DIALOG_SELECT_EFFECT@YGO_FRONT@@");
-    if (!g_effectDialogVTable) g_effectDialogVTable = FindVTable(".?AUDUEL_DIALOG_SELECT_EFFECT@YGO_FRONT@@");
+    // A struct in this build (.?AU); the class name (.?AV) is the fallback, so the found one is tried first.
+    g_effectDialogVTable = FindVTable(".?AUDUEL_DIALOG_SELECT_EFFECT@YGO_FRONT@@");
+    if (!g_effectDialogVTable) g_effectDialogVTable = FindVTable(".?AVDUEL_DIALOG_SELECT_EFFECT@YGO_FRONT@@");
     if (!g_effectDialogVTable) Log("No vtable for DUEL_DIALOG_SELECT_EFFECT");
     if (void* setup = FindInGame("DUEL_DIALOG_SELECT_EFFECT::Setup",
             "40 55 53 56 57 41 55 41 57 48 8D AC 24 68 FF FF FF 48 81 EC 98 01 00 00 0F 29 B4 24 80 01 00 00 48 8B 05 "

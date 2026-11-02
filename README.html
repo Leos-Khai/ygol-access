@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ygol-access: screen reader support for Yu-Gi-Oh! Legacy of the Duelist: Link Evolution</title>
+<style>
+  body { font-family: system-ui, sans-serif; line-height: 1.5; max-width: 50rem; margin: 2rem auto; padding: 0 1rem; color: #1a1a1a; background: #fff; }
+  table { border-collapse: collapse; }
+  th, td { border: 1px solid #888; padding: 0.3rem 0.6rem; text-align: left; vertical-align: top; }
+  kbd { font-family: ui-monospace, monospace; border: 1px solid #888; border-radius: 3px; padding: 0 0.25rem; }
+  @media (prefers-color-scheme: dark) { body { color: #eee; background: #121212; } a { color: #8ab4f8; } }
+</style>
+</head>
+<body>
+<main>
+<h1>ygol-access</h1>
+<p>ygol-access makes Yu-Gi-Oh! Legacy of the Duelist: Link Evolution playable with a screen reader. It reads the menus, the campaign's story, the deck editor, the shop and duels aloud, and adds keys for reviewing the duel board.</p>
+
+<h2>Contents</h2>
+<ul>
+  <li><a href="#requirements">Requirements</a></li>
+  <li><a href="#install">Install, update and uninstall</a></li>
+  <li><a href="#start">Getting started</a></li>
+  <li><a href="#hotkeys">Hotkeys</a></li>
+  <li><a href="#spoken">What is read</a></li>
+  <li><a href="#duels">Duels</a></li>
+  <li><a href="#limits">Known limitations</a></li>
+  <li><a href="#problems">Problems and game updates</a></li>
+  <li><a href="#license">License</a></li>
+</ul>
+
+<h2 id="requirements">Requirements</h2>
+<ul>
+  <li>The Steam version of Yu-Gi-Oh! Legacy of the Duelist: Link Evolution on Windows (64-bit).</li>
+  <li>A screen reader such as NVDA or JAWS. Without one running when the game starts, the mod uses Windows' own speech.</li>
+  <li>A keyboard. The mod's hotkeys are keyboard keys; a controller still works for playing.</li>
+</ul>
+
+<h2 id="install">Install, update and uninstall</h2>
+<ol>
+  <li>Close the game.</li>
+  <li>Download the newest <code>ygol-access-X.Y.Z.zip</code> from the <a href="https://github.com/Leos-Khai/ygol-access/releases">releases page</a> and unzip it.</li>
+  <li>Open the game folder: in Steam, right-click the game, then choose Manage, then Browse local files. It is the folder with <code>YuGiOh.exe</code>.</li>
+  <li>Copy <code>xinput9_1_0.dll</code> and <code>prism.dll</code> from the zip into that folder. When updating, replace the old files.</li>
+  <li>Start the game. You hear "Yu-Gi-Oh accessibility mod loaded. Press F1 for hotkeys."</li>
+</ol>
+<p>To uninstall, close the game and delete <code>xinput9_1_0.dll</code> and <code>prism.dll</code> from the game folder. The game itself is not changed.</p>
+
+<h2 id="start">Getting started</h2>
+<p>Play with the game's own keys; the mod reads what they do. With the default keyboard layout: the arrow keys move, <kbd>Enter</kbd> confirms and <kbd>Backspace</kbd> goes back. The full layout is in the game under Help &amp; Options, then Controls. On-screen key prompts are read with their key names, such as "Enter or A".</p>
+<p>When you move to an item, its name is read first, then its description. Pressing a key again cuts the speech off and reads the new item.</p>
+<p>A good first duel is the Yu-Gi-Oh! GX campaign's first duel, a guided Fusion Summon tutorial: Campaign, Yu-Gi-Oh! GX, then the first duel.</p>
+
+<h2 id="hotkeys">Hotkeys</h2>
+<p>The mod's keys work only while the game window is in front, and the game never sees them.</p>
+<table>
+  <caption>Hotkeys everywhere</caption>
+  <thead><tr><th scope="col">Key</th><th scope="col">Reads</th></tr></thead>
+  <tbody>
+    <tr><td><kbd>F1</kbd></td><td>The list of hotkeys</td></tr>
+    <tr><td><kbd>F5</kbd></td><td>All text on the screen</td></tr>
+    <tr><td><kbd>R</kbd></td><td>Your name and DP. In the deck editor: the deck's card counts, such as "Deck: 23 Effect, 12 Fusion, 15 Spell, 2 Trap"</td></tr>
+    <tr><td><kbd>H</kbd></td><td>Both duelists' life points</td></tr>
+    <tr><td><kbd>I</kbd></td><td>The full info of the card you are on: type, stats, text and how many copies you own</td></tr>
+  </tbody>
+</table>
+<table>
+  <caption>Hotkeys in a duel (hold <kbd>Alt</kbd> for the opponent's)</caption>
+  <thead><tr><th scope="col">Key</th><th scope="col">Reads</th></tr></thead>
+  <tbody>
+    <tr><td><kbd>F</kbd></td><td>The field: monster, Spell and Trap, and Field zones</td></tr>
+    <tr><td><kbd>U</kbd></td><td>Your hand. With Alt: how many cards the opponent holds</td></tr>
+    <tr><td><kbd>G</kbd></td><td>The Graveyard</td></tr>
+    <tr><td><kbd>V</kbd></td><td>Banished cards</td></tr>
+    <tr><td><kbd>E</kbd></td><td>The Extra Deck. With Alt: its size; the opponent's cards stay hidden</td></tr>
+    <tr><td><kbd>T</kbd></td><td>The turn, the phase and both Deck counts</td></tr>
+  </tbody>
+</table>
+
+<h2 id="spoken">What is read</h2>
+<ul>
+  <li><strong>Menus and settings:</strong> the selected item, its description, setting values and volume levels, and dialog boxes.</li>
+  <li><strong>Campaign:</strong> the series, the duel list, and the story dialogue line by line with the speaker's name.</li>
+  <li><strong>Cards in menus:</strong> the card's name, "New" if you haven't looked at it yet, and its place, such as "3 of 8". Press <kbd>I</kbd> for the rest.</li>
+  <li><strong>Deck editor:</strong> the sections with their card counts, the trunk, related cards, sorting ("Sort by Card Frame", then the card now under the cursor), the full card view, and the filter panel's options with "Selected" or "Not selected".</li>
+  <li><strong>Shop:</strong> each pack's name, price and how much of it you own ("12 of 40 cards, 20 of 120 copies"), the purchase prompt, your DP after buying, and each card you pull.</li>
+</ul>
+
+<h2 id="duels">Duels</h2>
+<ul>
+  <li><strong>The cursor:</strong> moving over a card reads its name, position, place and current ATK and DEF. When an effect has changed them, the printed value follows: "Elemental HERO Knospe, attack, your monster zone 4, ATK 700 (original 600), DEF 900 (original 1000)". Empty zones and piles are read too: "Your Graveyard, 2 cards, top Garoozis".</li>
+  <li><strong>Turns and life points:</strong> "Turn 3, your turn. Your Draw Phase", "You lose 1600 LP, now 6400".</li>
+  <li><strong>What happens:</strong> draws, summons, Sets, activations, chains, attacks, cards moving between zones, flips, position changes, targets, coin tosses, dice rolls and shuffles, for both duelists. The opponent's hidden cards are never named.</li>
+  <li><strong>Choices:</strong> the action menu (Summon, Set, Activate, Attack), zone and target prompts with the card under the cursor, phase selection, effect choices, Yes/No and OK boxes, and lists of cards to pick from.</li>
+  <li><strong>Summons with materials:</strong> each Tribute or material is read as you pick it ("Elemental HERO Avian selected as Fusion Material") and again when it is used.</li>
+  <li><strong>The end:</strong> the result, the result screen and the rewards.</li>
+</ul>
+
+<h2 id="limits">Known limitations</h2>
+<ul>
+  <li>Online duels haven't been tested with the mod.</li>
+  <li>Picking cards in a list (such as an effect's targets) is only confirmed when you press OK.</li>
+  <li>Scrolling very fast through a list of cards can skip reading a card, sometimes the one you stop on; move off it and back to hear it.</li>
+  <li>The Extra Monster Zones and the numbered labels of effect choices ("Choice 2 of 3") haven't been checked in a duel yet.</li>
+</ul>
+
+<h2 id="problems">Problems and game updates</h2>
+<p>The mod finds its way around the game by looking for parts of the game's code. If a game update moves one of them, the mod says at startup that some parts were not found, and some speech will be missing until the mod is updated.</p>
+<p>To report a problem, open an issue on the <a href="https://github.com/Leos-Khai/ygol-access/issues">issues page</a>. Say what you did and what you heard, and attach <code>ygol-access.log</code> from the game folder: it records what the mod saw, for the last time the game ran.</p>
+
+<h2 id="license">License</h2>
+<p>ygol-access is free software under the MIT license (<code>LICENSE</code>). Speech comes from <a href="https://github.com/ethindp/prism">Prism</a>; its license and those of the libraries it includes are in <code>third_party/prism</code>. Yu-Gi-Oh! and Legacy of the Duelist are trademarks of their owners; this mod is not affiliated with Konami.</p>
+</main>
+</body>
+</html>

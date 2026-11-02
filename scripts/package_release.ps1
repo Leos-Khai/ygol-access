@@ -1,6 +1,6 @@
 # Builds the mod, runs the tests, and packages it into dist\ygol-access-<version>.zip.
-# The zip holds one ygol-access-<version> folder: the two DLLs that go in the game folder, the install
-# steps, the changelog, this project's license and Prism's licenses.
+# The zip holds one ygol-access-<version> folder: the two DLLs that go in the game folder, README.html (install
+# steps and hotkeys), the changelog, this project's license and Prism's licenses.
 $ErrorActionPreference = 'Stop'
 $root = Split-Path $PSScriptRoot -Parent
 Set-Location $root
@@ -20,20 +20,8 @@ $zip = Join-Path $root "dist\$name.zip"
 
 if (Test-Path $stage) { Remove-Item $stage -Recurse -Force }
 New-Item -ItemType Directory -Force $stage, "$stage\third_party\prism", (Split-Path $zip) | Out-Null
-Copy-Item build\Release\xinput9_1_0.dll, third_party\prism\dynamic\release\bin\prism.dll, LICENSE, CHANGELOG.md $stage
+Copy-Item build\Release\xinput9_1_0.dll, third_party\prism\dynamic\release\bin\prism.dll, README.html, LICENSE, CHANGELOG.md $stage
 Copy-Item third_party\prism\LICENSES, third_party\prism\NOTICE "$stage\third_party\prism" -Recurse
-@"
-ygol-access ${version}: screen reader support for Yu-Gi-Oh! Legacy of the Duelist: Link Evolution (Steam, Windows).
-
-Install
-1. Close the game.
-2. Copy xinput9_1_0.dll and prism.dll into the game folder, next to YuGiOh.exe. In Steam: right-click the game,
-   Manage, Browse local files.
-3. Start the game. Speech goes to your screen reader (NVDA, JAWS and others), or to Windows speech without one.
-
-Uninstall: delete those two files from the game folder.
-The mod writes a log, ygol-access.log, in the game folder; include it when reporting a problem.
-"@ | Set-Content "$stage\INSTALL.txt" -Encoding utf8
 
 if (Test-Path $zip) { Remove-Item $zip -Force }
 Compress-Archive -Path $stage -DestinationPath $zip
