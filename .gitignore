@@ -1,0 +1,16 @@
+# Build output
+build/
+
+# The game's files and data generated from them (copyrighted, regenerable with tools/)
+extracted/
+cards_E.json
+
+# Prism: the build uses only dynamic/release
+third_party/prism/static/
+third_party/prism/dynamic/debug/
+
+# Python
+__pycache__/
+
+# Test captures
+*.png
