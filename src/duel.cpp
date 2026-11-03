@@ -506,6 +506,9 @@ static std::wstring DescribeCard(Loc l, int16_t id) {
 
 // The last card or place the cursor and the details panel each spoke: the panel and the cursor can alternate every frame.
 static uint32_t g_lastCursorKey = ~0u, g_lastPanelKey = ~0u;  // game thread only
+// The panel also shows field cards it doesn't say (materials being picked): repeats are checked against the last
+// card it said, or the card being summoned is said again after each material.
+static uint32_t g_lastSaidPanelKey = ~0u;
 
 // The duel cursor (the pointing hand): 0x14278EE78 holds where it is, packed like animation locations. Every move
 // (keys, the engine pointing at a card) ends in 0x140773660, hooked here. Moves the player makes are spoken: the
@@ -596,13 +599,15 @@ static void __fastcall ShowCardHook(void* widget, const uint8_t* info) {
     bool asked = now - MenuLastGameKeyAt() < 1000 || now - g_listAt < 2000;
     bool atCursor = g_cursor && (ref & 0x3FFF) == (*g_cursor & 0x3FFF);  // 0x4000: card ref flag
     // The hand is the cursor's too: the panel re-shows hand cards as they are picked as materials.
-    if (onField || l.zone == 13 || (located && (!asked || atCursor))) return;
+    if (onField || l.zone == 13 || (located && (!asked || atCursor)) || key == g_lastSaidPanelKey) return;
+    g_lastSaidPanelKey = key;
     Say(located ? Name(id) + L", " + Where(l) : Name(id), true);
 }
 
 // "Use which effect of X?" (YGO_FRONT::DUEL_DIALOG_SELECT_EFFECT): tabs "Choice 1".."Choice N" over one description
 // box, and a "not allowed" picture on choices that can't be used. Its setup, 0x14077B280(dialog, a2, a3), leaves
-// the tab list at +0x258/+0x260 (0x70 bytes each), a can't-use flag per choice at +0x2F8 + i, and each choice's
+// the tab list at +0x258/+0x260 (0x70 bytes each), a can-use flag per choice at +0x2F8 + i (also bit i of +0x2E0,
+// which OK checks before accepting the choice), and each choice's
 // description as a std::wstring at +0x300 + i * 0x20. The spoken description gets the choice's number and
 // availability from these.
 using EffectDialogSetupFn = void(__fastcall*)(uint8_t* dialog, void* a2, char a3);
@@ -617,7 +622,7 @@ static void __fastcall EffectDialogSetupHook(uint8_t* dialog, void* a2, char a3)
 // The choices' descriptions and flags, read under SEH: the dialog may be closed and freed meanwhile.
 struct EffectChoices {
     int count = 0;
-    bool blocked[8];
+    bool usable[8];
     wchar_t text[8][256];
 };
 static bool ReadEffectChoices(const uint8_t* dialog, EffectChoices& out) {
@@ -627,7 +632,7 @@ static bool ReadEffectChoices(const uint8_t* dialog, EffectChoices& out) {
         if (count <= 0 || count > 8) return false;
         out.count = (int)count;
         for (int i = 0; i < out.count; ++i) {
-            out.blocked[i] = dialog[0x2F8 + i] != 0;
+            out.usable[i] = dialog[0x2F8 + i] != 0;
             const uint8_t* s = dialog + 0x300 + i * 0x20;  // MSVC std::wstring: buffer or pointer, size, capacity
             size_t size = *(const size_t*)(s + 0x10), capacity = *(const size_t*)(s + 0x18);
             const wchar_t* chars = capacity > 7 ? *(const wchar_t* const*)s : (const wchar_t*)s;
@@ -650,7 +655,7 @@ std::wstring DuelAnnotate(const std::wstring& text) {
         size_t at = description.empty() ? std::wstring::npos : text.find(description);
         if (at == std::wstring::npos) continue;
         std::wstring label = L"Choice " + std::to_wstring(i + 1) + L" of " + std::to_wstring(choices.count) +
-                             (choices.blocked[i] ? L", not available: " : L": ");
+                             (choices.usable[i] ? L": " : L", not available: ");
         return text.substr(0, at) + label + text.substr(at);
     }
     return text;

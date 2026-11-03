@@ -475,15 +475,32 @@ static void AnnouncerThread() {
                     if (p.layer) g_focusLayers.push_back(p.layer);
                 }
             }
-            if (!g_lastItemWasCard) g_cardInfo.clear();  // I must not read a card the user has left
+            // A duel's Yes/No buttons are highlights; the card the prompt is about is the one the duel last showed.
+            bool duelButton = std::all_of(g_items.begin(), g_items.end(), [](const Focus& f) { return f.highlight; }) && DuelInProgress();
+            float buttonRow = g_items.front().y;
+            bool reward = std::any_of(g_items.begin(), g_items.end(), [](const Focus& f) { return f.cls && strstr(f.cls, "widget_RewardWindow"); });
+            if (!g_lastItemWasCard && !duelButton) g_cardInfo.clear();  // I must not read a card the user has left
             std::wstring tip;
             if (g_tipPending && g_tipAt + kTipBeforeMs >= first) {  // the description belongs to this focus change
                 DropScrolledLocked(g_tipFocus, g_tipAt);
                 if (g_lastItemWasCard) KeepKnownDescriptionsLocked(g_tipFocus);
+                if (duelButton) {  // the other buttons on the row aren't part of the question
+                    std::erase_if(g_tipFocus.pieces, [&](const Focus::Piece& p) {
+                        LayerSeen seen = p.layer ? LayerLastDrawn(p.layer) : LayerSeen{};
+                        return seen.known && std::abs(seen.y - buttonRow) < 0.03f;
+                    });
+                }
                 tip = VisibleText(g_tipFocus, item);
                 g_tipPending = false;
             }
             g_items.clear();
+            // A reward's label ("Card Award", "DP") only repeats the line that says it ("NEW CARD AWARD! Evo-Force").
+            if (reward && !tip.empty()) {
+                item = std::move(tip);
+                tip.clear();
+            }
+            // "Activate the effect of X?": the question first, then the button the cursor is on.
+            bool questionFirst = duelButton && !tip.empty() && tip.back() == L'?';
             if (item.empty() && !tip.empty()) {  // a picture took focus (a duel's phase icon): its dialog's text says it
                 item = std::move(tip);
                 tip.clear();
@@ -499,6 +516,7 @@ static void AnnouncerThread() {
             g_lastItemSpokenAt = now;
             g_lastItemSpoken = item;
             lock.unlock();
+            if (questionFirst) std::swap(item, tip);
             SpeakW(item, true);
             if (!tip.empty()) SpeakW(tip, false);
             lock.lock();
@@ -792,6 +810,21 @@ static void OnTextChanged(const void* layer, std::wstring_view text, float x, fl
     bool prompt = IsIcon(text.front());
     std::wstring clean = CleanForSpeech(text);
     if (clean.empty()) return;
+    // A duel's full card view (Show Details) has the card's name and type across the top, then its stats and text
+    // as separate labels: say the card's full info, as I does.
+    if (text.starts_with(L"@4") && y > 0.75f && DuelInProgress()) {
+        std::wstring name = CleanForSpeech(text.substr(2, text.find(L'@', 2) - 2));
+        std::wstring info;
+        {
+            std::lock_guard lock(g_mutex);
+            info = g_cardInfo;
+        }
+        if (!info.starts_with(name)) info = clean;
+        Focus view{{{layer, std::move(info)}}, {}, GetTickCount64()};
+        view.card = true;
+        AnnounceItem(std::move(view));
+        return;
+    }
     // A duel's card panels (left edge; a second one at the right during targets and materials) follow the cursor
     // and the engine; the cursor speech, the events and I cover them. The HUD's names and LP are in the corners.
     if ((x < -0.7f || x > 0.5f) && y > -0.7f && y < 0.7f && DuelInProgress()) return;
@@ -810,11 +843,16 @@ static void OnTextChanged(const void* layer, std::wstring_view text, float x, fl
     }
     // Left/Right also move through grids; when they moved focus, what changes is the new item's details.
     bool focusMoved = GetTickCount64() - g_lastFocusAt < kTipWindowMs;
-    bool suppressed;
+    bool suppressed, cardShown;
     {
         std::lock_guard lock(g_mutex);
         suppressed = GetTickCount64() - g_suppressLiveAt < 1500 && !g_suppressLive.empty() && clean.starts_with(g_suppressLive);
+        // A duel's cursor and card lists aren't widgets: the card they just showed is their focus move. A list to
+        // pick from (Deck, Graveyard) relabels its cards' levels ("x4") as it scrolls or reopens; those aren't
+        // values or new rows, even on a layer that was the list's OK button a moment ago.
+        cardShown = GetTickCount64() - g_suppressLiveAt < kTipWindowMs;
     }
+    focusMoved = focusMoved || cardShown;
     if (suppressed) return;  // a details panel repeating the card just announced (Left/Right in a duel's hand)
     if (!prompt && !firstSeen && ValueKeyRecent() && !focusMoved) {
         Log("value: %s", ToUtf8(clean).c_str());
@@ -840,7 +878,7 @@ static void OnTextChanged(const void* layer, std::wstring_view text, float x, fl
     bool focusedRow = std::find(g_focusLayers.begin(), g_focusLayers.end(), layer) != g_focusLayers.end();
     // A game key since the last focus change means this is a new row, however fast the presses come; otherwise
     // wait out labels still being filled in for that focus.
-    if (focusedRow && !firstSeen && (now - g_lastFocusAt > kTipWindowMs || g_gameKeyAt > g_lastFocusAt)) {
+    if (focusedRow && !firstSeen && !cardShown && (now - g_lastFocusAt > kTipWindowMs || g_gameKeyAt > g_lastFocusAt)) {
         if (now - g_elsewhereAt < 2000 && Contains(g_elsewhere, clean)) return;  // a phase banner reusing a button's layer
         // The cursor stayed on its row while the list scrolled under it: the row's new label is the new item.
         lock.unlock();
