@@ -2,6 +2,18 @@
 
 The newest version comes first. Each version lists the features and fixes you'll notice; small internal changes are left out.
 
+## Unreleased
+
+### Fixed
+
+- **Card levels read while scrolling a list.** Picking a card from your Deck, Graveyard or Extra Deck in a duel no longer reads stray levels like "x4" as you move through the list. You hear only the card names ("Elemental HERO Sparkman, your Deck").
+- **Effect choices called "not available" by mistake.** In a "Use which effect?" box, the choices you can use were read as "not available", and the ones you can't use as available. It's now the right way round: for Elemental HERO Stratos with no other HERO monsters, "Choice 1 of 3, not available: Destroy Spells/Traps…", then "Choice 2 of 3: Add 1 "HERO" monster from your Deck to your hand."
+- **Yes/No questions read in the wrong order.** Duel questions are read before the button you're on, without the other button tacked on: "Activate the effect of "Vision HERO Faris"?", then "Yes".
+- **I at a duel question.** Pressing I at "Activate the effect of …?" reads that card instead of "No card selected".
+- **The summoned card repeated during material picks.** While you pick Link or Fusion Materials, the monster being summoned is said once, not again after each material.
+- **Show Details read without the card's name.** Show Details now reads the card's full info, like I: name, type, stats and text. Before, it started partway into the text ("2 Warrior monsters…").
+- **Doubled labels on the reward screen.** Rewards after a duel are read once ("NEW CARD AWARD! Evo-Force", "VICTORY DUEL POINTS EARNED! 1060 DP"), without "Card Award" or "DP" said first.
+
 ## 0.1.0 (November 3, 2026)
 
 The first release.
