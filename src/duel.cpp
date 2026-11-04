@@ -266,6 +266,9 @@ static std::wstring CardName(Loc l, const wchar_t* hidden = L"a card") {
 static std::wstring Does(int side, const wchar_t* verb) { return std::wstring(side & 1 ? L"Opponent " : L"You ") + verb + (side & 1 ? L"s" : L""); }
 
 static const uint16_t* g_cursor;  // the duel cursor's location (see CursorMovedHook)
+// Where the cursor was when a list to pick from opened (anim 56), until it moves. A pile's list keeps the cursor on
+// the pile, whose location is also that of the list's first card.
+static uint16_t g_listCursor = 0xFFFF;
 
 // A card's instance number (unique per duel) from its pile or zone word, as the engine's lookup 0x140044480 reads it.
 static int InstanceOf(uint32_t word) { return (int)((word >> 14) & 1) + (int)((word >> 23) & 0xFF) * 2; }
@@ -444,6 +447,7 @@ static int __fastcall DuelAnimHook(int anim, int a2, int a3, int a4) {
         break;
     case 56:  // SelectOption: a list or option to pick from opens
         g_listAt = GetTickCount64();
+        if (g_cursor) g_listCursor = *g_cursor;
         break;
     case 55:  // Message: kind, a3, a4. (4, 1, 0) is sent constantly with nothing shown.
         if (a2 != 4 || a4 != 0) MenuExpectMessage();  // a box (Ok, or Yes/No) follows
@@ -558,6 +562,7 @@ using CursorMovedFn = void(__fastcall*)();
 static CursorMovedFn g_cursorMoved;
 static void __fastcall CursorMovedHook() {
     g_cursorMoved();
+    if (g_cursor && *g_cursor != g_listCursor) g_listCursor = 0xFFFF;
     // Only moves from a key the player pressed in the duel: the engine points on its own (see ShowCardHook), and the
     // cursor appears at the start right after the key that closed the intro.
     ULONGLONG keyAt = MenuLastGameKeyAt();
@@ -597,8 +602,9 @@ static void __fastcall ShowCardHook(void* widget, const uint8_t* info) {
     // the player moves through them or as the list opens (anim 56), and cards with no place (a token being made).
     ULONGLONG now = GetTickCount64();
     bool asked = now - MenuLastGameKeyAt() < 1000 || now - g_listAt < 2000;
-    bool atCursor = g_cursor && (ref & 0x3FFF) == (*g_cursor & 0x3FFF);  // 0x4000: card ref flag
-    // The hand is the cursor's too: the panel re-shows hand cards as they are picked as materials.
+    // The card on the pile under the cursor, which the cursor said; with that pile's list open, the list's first card.
+    bool listOpen = g_cursor && *g_cursor == g_listCursor;
+    bool atCursor = g_cursor && !listOpen && (ref & 0x3FFF) == (*g_cursor & 0x3FFF);  // 0x4000: card ref flag    // The hand is the cursor's too: the panel re-shows hand cards as they are picked as materials.
     if (onField || l.zone == 13 || (located && (!asked || atCursor)) || key == g_lastSaidPanelKey) return;
     g_lastSaidPanelKey = key;
     Say(located ? Name(id) + L", " + Where(l) : Name(id), true);

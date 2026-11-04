@@ -493,6 +493,17 @@ static void AnnouncerThread() {
                 tip = VisibleText(g_tipFocus, item);
                 g_tipPending = false;
             }
+            // A box the duel engine didn't send (S: "Would you like to exit this tutorial?") has no message event to
+            // make its question the description: it is drawn with the buttons, as live text.
+            if (duelButton && tip.empty()) {
+                Focus question{{}, {}, g_live.at};
+                std::erase_if(g_live.pieces, [&](Focus::Piece& p) {
+                    bool asks = !p.text.empty() && p.text.back() == L'?';
+                    if (asks) question.pieces.push_back(p);
+                    return asks;
+                });
+                tip = VisibleText(question, item);
+            }
             g_items.clear();
             // A reward's label ("Card Award", "DP") only repeats the line that says it ("NEW CARD AWARD! Evo-Force").
             if (reward && !tip.empty()) {

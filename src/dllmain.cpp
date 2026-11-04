@@ -38,6 +38,9 @@ static bool GameHasFocus() {
 
 constexpr UINT WM_APP_HOTKEY = WM_APP + 1;
 static DWORD g_hotkeyThread;
+// An unassigned key, sent after an Alt hotkey: Alt released with only a swallowed key in between would open the
+// window's system menu.
+constexpr DWORD kMaskKey = 0xE8;
 
 // Mod hotkeys, handled only while the game has focus and hidden from the game. None is bound by the game's
 // default keyboard layout (Help & Options > Controls).
@@ -57,6 +60,7 @@ static bool IsHotkey(DWORD vk) {
 static LRESULT CALLBACK KeyboardHook(int code, WPARAM wParam, LPARAM lParam) {
     static bool down[256];  // the hook sees auto-repeat as more key-downs; act on the first only
     auto* key = (KBDLLHOOKSTRUCT*)lParam;
+    if (code == HC_ACTION && key->vkCode == kMaskKey) return CallNextHookEx(nullptr, code, wParam, lParam);
     if (code == HC_ACTION && (wParam == WM_KEYDOWN || wParam == WM_SYSKEYDOWN) && GameHasFocus()) MenuAnyKeyPressed(!IsHotkey(key->vkCode));
     if (code == HC_ACTION && (key->vkCode == VK_LEFT || key->vkCode == VK_RIGHT) && wParam == WM_KEYDOWN && GameHasFocus()) {
         MenuValueKeyPressed();  // the game still gets the key
@@ -117,6 +121,13 @@ static DWORD WINAPI Startup(void*) {
     MSG msg;
     while (GetMessageW(&msg, nullptr, 0, 0) > 0) {
         if (msg.message != WM_APP_HOTKEY) continue;
+        if (msg.lParam) {
+            INPUT mask[2] = {};
+            mask[0].type = mask[1].type = INPUT_KEYBOARD;
+            mask[0].ki.wVk = mask[1].ki.wVk = (WORD)kMaskKey;
+            mask[1].ki.dwFlags = KEYEVENTF_KEYUP;
+            SendInput(2, mask, sizeof(INPUT));
+        }
         if (msg.wParam == VK_F1) {
             Log("hotkey help");
             Speak("Hotkeys. F1: this help. F5: read the screen. R: your name and DP; in the deck editor, the deck's "
