@@ -2,6 +2,12 @@
 
 The newest version comes first. Each version lists the features and fixes you'll notice; small internal changes are left out.
 
+## Unreleased
+
+### Fixed
+
+- **I reading a different card in the trunk.** Moving right from the last card in a row onto the next one, in the trunk or Related Cards, could make I read the card you'd just left instead of the one you're on. This kept happening every row until you moved left or right. I now reads the card under the cursor.
+
 ## 0.1.2 (November 4, 2026)
 
 ### Fixed
