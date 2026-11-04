@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.28)
-project(ygol_access VERSION 0.1.1 LANGUAGES CXX)  # scripts/release.ps1 bumps this
+project(ygol_access VERSION 0.1.2 LANGUAGES CXX)  # scripts/release.ps1 bumps this
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
