@@ -2,6 +2,14 @@
 
 The newest version comes first. Each version lists the features and fixes you'll notice; small internal changes are left out.
 
+## Unreleased
+
+### Fixed
+
+- **The tutorial's exit question.** Pressing S in a tutorial duel now reads the question before the button you're on: "Would you like to exit this tutorial?", then "No". Before, only "No" was read.
+- **Alt hotkeys opening the Windows menu.** Alt with F, U, G, V or E still reads the opponent's field, hand, Graveyard, banished cards or Extra Deck. Letting go of Alt no longer opens the game window's system menu.
+- **The first card in a Deck or Extra Deck list.** When you view or summon from your Extra Deck (or pick from another pile), the first card in the list is now read as the list opens and when you move back to it: "Junk Warrior, your Extra Deck". Before, it was skipped.
+
 ## 0.1.1 (November 3, 2026)
 
 ### Fixed
