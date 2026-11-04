@@ -158,6 +158,7 @@ struct Focus {
     bool startedEmpty = false;  // no text when it took focus: its labels are being filled in (a shop pack)
     bool card = false;          // a card, spoken with its name, summary and text
     bool highlight = false;     // from a label drawn in the focus colour (OnHighlight), at row y
+    bool relabel = false;       // the focused row's labels changing as its list scrolls
     float y = 0;
 };
 
@@ -788,6 +789,27 @@ static void __fastcall SetDescriptionHook(uint8_t* help, intptr_t textIdOrPointe
 // On a screen's first focus all its layers are new, so a new layer only counts if it sits at a known slot.
 static bool IsIcon(wchar_t c) { return c >= 0xE000 && c <= 0xF8FF; }
 
+static bool KeysOnly(std::wstring_view text) {
+    return std::all_of(text.begin(), text.end(), [](wchar_t c) { return IsIcon(c) || c == L' '; });
+}
+
+// The text on row y. Text opening with an icon is a key prompt sharing the row ("[Enter] OK") and is left out,
+// except key icons alone (a Controls row's keys) and `label` (null: every label), said without its icon.
+static Focus RowFocus(float y, const void* label) {
+    Focus row{{}, {}, GetTickCount64()};
+    row.y = y;
+    for (RowText& r : TextOnRow(y)) {
+        std::wstring_view text = r.text;
+        if (IsIcon(text.front()) && !KeysOnly(text)) {
+            if (label && r.layer != label) continue;
+            while (!text.empty() && IsIcon(text.front())) text.remove_prefix(1);  // a Controls row's pad button
+        }
+        std::wstring clean = CleanForSpeech(text);
+        if (!clean.empty()) row.pieces.push_back({r.layer, std::move(clean)});
+    }
+    return row;
+}
+
 // Left/Right change values (settings, option rows). Text that changes right after is the new value.
 static std::atomic<ULONGLONG> g_valueKeyAt;
 constexpr ULONGLONG kValueWindowMs = 500;
@@ -823,10 +845,18 @@ static bool ValueKeyRecent() { return GetTickCount64() - g_valueKeyAt < kValueWi
 
 static void OnTextChanged(const void* layer, std::wstring_view text, float x, float y, bool firstSeen, bool moved) {
     // Text opening with an icon is a key prompt ("[Enter] OK") unless it's a label of the focused widget (a shop
-    // pack's "[cards] 85/314"); prompts are never values, descriptions or news.
-    bool prompt = IsIcon(text.front());
+    // pack's "[cards] 85/314"); prompts are never values, descriptions or news. Several lines are a message
+    // ("[Up] is the only key assigned to|Move Up").
+    bool prompt = IsIcon(text.front()) && text.find_first_of(L"|\n") == std::wstring_view::npos;
     std::wstring clean = CleanForSpeech(text);
     if (clean.empty()) return;
+    // A Controls row's keys changed: a key was assigned, or taken from this row by another.
+    if (KeysOnly(text) && !firstSeen && !moved && !DuelInProgress()) {
+        Focus row = RowFocus(y, nullptr);
+        Log("keys changed: %s", ToUtf8(AllText(row)).c_str());
+        if (!row.pieces.empty()) AnnounceItem(std::move(row));
+        return;
+    }
     // A duel's full card view (Show Details) has the card's name and type across the top, then its stats and text
     // as separate labels: say the card's full info, as I does.
     if (text.starts_with(L"@4") && y > 0.75f && DuelInProgress()) {
@@ -893,14 +923,25 @@ static void OnTextChanged(const void* layer, std::wstring_view text, float x, fl
     if (prompt) return;
     ULONGLONG now = GetTickCount64();
     bool focusedRow = std::find(g_focusLayers.begin(), g_focusLayers.end(), layer) != g_focusLayers.end();
+    // The row's other labels (its number after its name) change in the same frame.
+    auto sameRow = std::find_if(g_items.begin(), g_items.end(), [&](const Focus& f) { return f.relabel && now - f.at <= kCoalesceMs; });
     // A game key since the last focus change means this is a new row, however fast the presses come; otherwise
     // wait out labels still being filled in for that focus.
-    if (focusedRow && !firstSeen && !cardShown && (now - g_lastFocusAt > kTipWindowMs || g_gameKeyAt > g_lastFocusAt)) {
+    if (focusedRow && !firstSeen && !cardShown &&
+        (sameRow != g_items.end() || now - g_lastFocusAt > kTipWindowMs || g_gameKeyAt > g_lastFocusAt)) {
         if (now - g_elsewhereAt < 2000 && Contains(g_elsewhere, clean)) return;  // a phase banner reusing a button's layer
-        // The cursor stayed on its row while the list scrolled under it: the row's new label is the new item.
-        lock.unlock();
+        // The cursor stayed on its row while the list scrolled under it: the row's new labels are the new item.
         Log("row relabelled: %s", ToUtf8(clean).c_str());
-        AnnounceItem({{{layer, std::move(clean)}}, {}, now});
+        if (sameRow != g_items.end()) {
+            sameRow->pieces.push_back({layer, std::move(clean)});
+        } else {
+            // Not AnnounceItem: it would forget the row's other labels before they change too.
+            Focus row{{{layer, std::move(clean)}}, {}, now};
+            row.relabel = true;
+            g_items.push_back(std::move(row));
+            g_lastFocusAt = now;
+        }
+        g_wake.notify_one();
         return;
     }
     if (moved) {  // a scrolled label: not news, not a description
@@ -956,15 +997,9 @@ static void OnHighlight(const void* layer, float, float y) {
         std::lock_guard lock(g_mutex);
         if (!duel && std::find(g_focusLayers.begin(), g_focusLayers.end(), layer) != g_focusLayers.end()) return;  // widget focus has it
     }
-    Focus row{{}, {}, GetTickCount64()};
+    Focus row = RowFocus(y, layer);
     row.highlight = true;
-    row.y = y;
-    for (RowText& r : TextOnRow(y)) {
-        if (IsIcon(r.text.front())) continue;  // key prompts share rows with real text
-        if (duel && r.layer != layer) continue;
-        std::wstring clean = CleanForSpeech(r.text);
-        if (!clean.empty()) row.pieces.push_back({r.layer, std::move(clean)});
-    }
+    if (duel) std::erase_if(row.pieces, [&](const Focus::Piece& p) { return p.layer != layer; });
     Log("highlight %p: %s", layer, ToUtf8(AllText(row)).c_str());
     if (!row.pieces.empty()) AnnounceItem(std::move(row));
 }

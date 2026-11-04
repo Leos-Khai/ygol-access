@@ -2,6 +2,13 @@
 
 The newest version comes first. Each version lists the features and fixes you'll notice; small internal changes are left out.
 
+## Unreleased
+
+### Fixed
+
+- **Numbers in the Tutorial list.** Scrolling past the rows on screen in Help & Options > Tutorial now reads the number with the name: "11, Display Card List". Before, only the name was read.
+- **The Controls screen.** In Help & Options > Controls, the Keyboard tab now reads each function and its keys as you move: "Display Command Menu/Confirm, Left click, Enter or A". Before, only "Un-assign a key" was read. Assigning a key reads the row's new keys, and the warning when you try to remove a function's only key is read too.
+
 ## 0.1.3 (November 4, 2026)
 
 ### Fixed
