@@ -70,7 +70,7 @@ Notes (how menu speech works, all in `src/menu.cpp`):
 - A widget refocused within 100 ms of losing focus is ignored: Video Settings unfocuses and refocuses Apply/Back every frame (was ~17,000 focus events and constant "Apply" speech).
 
 - Key icons are spoken as key names (`KeyName` in text.cpp, mapped from the Controls screen): digits U+E169.., letters U+E173.., plus arrows, Enter, Backspace, Esc, Space, Tab, Shifts, Ctrls, PgUp/PgDn, Home, End, Pause, mouse and pad buttons. Adjacent icons read "Enter or A".
-- The card under the cursor can change without a focus event (trunk scrolling past its visible rows, re-sorting): `SetCard` (0x140882D80) on the focused card widget announces the new card.
+- The card under the cursor can change without a focus event (trunk scrolling past its visible rows, re-sorting): `SetCard` (0x140882D80) on the focused card widget announces the new card. Only the card widget that last took focus counts: Right onto the next row scrolls the grid, and the card just left is refilled while its focused flag is still set.
 - Sort bars: their labels are remembered when they take focus; a change is announced first ("Sort by Level/Rank, <card>").
 - Filter options (`widget_TrunkFilterMaskOption`): check-mark sprite at +0xA0 (+0x24 index), 0x150 = selected; `RefreshCheck` (0x1408BAC10) announces toggles. Helper buttons (`widget_ButtonHelp`) are dropped like toolbars.
 - Deck stats (`widget_DeckStats::Refresh` 0x1408973A0): 10 counts from its source's vtable slot 2, in the bar's colour order (Normal, Effect, Ritual, Fusion, Synchro, Spell, Trap, Xyz, Pendulum, Link; checked against Best Hero: 40 main + 15 extra).

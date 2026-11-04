@@ -619,12 +619,15 @@ static void MakeCardFocus(const uint8_t* widget, Focus& focus) {
 
 // The cursor stays on a card widget while the card in it changes (the trunk scrolls past its last visible row,
 // or is re-sorted): announce the new card as if focus had moved.
+// Only the card that last took focus: moving Right onto the next row scrolls the grid, and the card just left is
+// refilled while it still has its focused flag. Game thread only; compared, never read.
+static const uint8_t* g_focusedCard;
 using SetCardFn = void(__fastcall*)(uint8_t* widget, int16_t cardId);
 static SetCardFn g_setCard;
 static void __fastcall SetCardHook(uint8_t* widget, int16_t cardId) {
     int16_t before = *(const int16_t*)(widget + kCardIdOffset);
     g_setCard(widget, cardId);
-    if (cardId == before || cardId == -1 || !widget[kFocusedOffset]) return;
+    if (cardId == before || cardId == -1 || !widget[kFocusedOffset] || widget != g_focusedCard) return;
     const char* cls = ClassName(widget);
     if (!cls || strcmp(cls, kCardClass) != 0) return;
     Focus focus = WidgetFocus(widget);
@@ -711,7 +714,10 @@ static void __fastcall SetFocusedHook(uint8_t* widget, char focused) {
         if (g_cardGrids.size() >= 8) g_cardGrids.erase(g_cardGrids.begin());
         g_cardGrids.push_back(widget);
     }
-    if (cls && strcmp(cls, kCardClass) == 0) MakeCardFocus(widget, focus);
+    if (cls && strcmp(cls, kCardClass) == 0) {
+        g_focusedCard = widget;
+        MakeCardFocus(widget, focus);
+    }
     if (cls && strcmp(cls, kFilterOptionClass) == 0 && *(const int*)(widget + kOptionCheckOffset) == kCheckedSprite)
         focus.pieces.push_back({kAfterText, L"Selected"});
     // Sort bars change their label on a key press (X in the trunk); remember the labels to announce that.
