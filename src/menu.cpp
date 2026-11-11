@@ -752,6 +752,7 @@ static void __fastcall SetEnabledHook(uint8_t* widget, char enabled) {
     if (!enabled || was || !element) return;
     const char* cls = ClassName(widget);
     if (!IsPopupClass(cls)) return;
+    if (strstr(cls, "SortWindow_t")) DuelSortWindowShown(widget);
     // A card list's hidden Filter and Sort windows are re-shown every frame: only a first appearance is a popup.
     static std::unordered_map<const void*, ULONGLONG> shownAt;  // game thread only
     ULONGLONG now = GetTickCount64();
@@ -971,6 +972,7 @@ static void OnTextChanged(const void* layer, std::wstring_view text, float x, fl
         [&](const auto& s) { return std::abs(s.first - x) < 0.02f && std::abs(s.second - y) < 0.02f; });
     // The duel signalled a message box: its line comes with the box's Ok button and is what the box says.
     if (now - g_messageAt < 1500) {
+        if (std::wstring cursor = DuelCursorText(clean); !cursor.empty()) clean += L" " + cursor;
         AddTipLocked(layer, std::move(clean));
         return;
     }

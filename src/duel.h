@@ -24,3 +24,6 @@ std::wstring DuelCursorText(const std::wstring& prompt);
 // Text about to be spoken, with duel context added: an effect choice's description gets "Choice 2 of 3: " (and
 // "not available" when the choice can't be used). Any thread.
 std::wstring DuelAnnotate(const std::wstring& text);
+
+// A duel card list's Sort window was shown (it is re-shown every frame while the list is open). Game thread.
+void DuelSortWindowShown(const void* sortWindow);

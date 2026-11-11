@@ -218,6 +218,9 @@ struct Loc {
 };
 static Loc Unpack(uint32_t ref) { return {(int)(ref & 1), (int)((ref >> 1) & 0x1F), (int)((ref >> 6) & 0xFF)}; }
 
+// A monster zone's index above 0 is an Xyz Material under the monster there (0x44, 0x84: zone 2's first and second).
+static bool IsMaterial(Loc l) { return l.zone <= 6 && l.index > 0; }
+
 static const uint8_t* FieldSlot(Loc l) { return l.zone >= 0 && l.zone <= 12 ? Zone(l.side, l.zone) : nullptr; }
 
 static int16_t CardAt(Loc l) {
@@ -239,7 +242,17 @@ static bool Known(Loc l) {
     return !slot || !FaceDown(slot);
 }
 
+static int16_t CardAt(Loc l);
+
+// Spell and trap zones 1 and 5 are the Pendulum Zones: named so while a Pendulum card is in them.
+static bool InPendulumZone(Loc l) {
+    if (l.zone != 7 && l.zone != 11) return false;
+    int16_t id = CardAt(Loc{l.side, l.zone, 0});
+    return id && CardSummary(id).find(L", Scale ") != std::wstring::npos;
+}
+
 static std::wstring Place(Loc l) {
+    if (InPendulumZone(l)) return L"Pendulum Zone " + std::to_wstring(l.zone == 7 ? 1 : 2);
     switch (l.zone) {
     case 5: case 6: return L"Extra Monster Zone " + std::to_wstring(l.zone - 4);
     case 12: return L"field zone";
@@ -269,6 +282,12 @@ static const uint16_t* g_cursor;  // the duel cursor's location (see CursorMoved
 // Where the cursor was when a list to pick from opened (anim 56), until it moves. A pile's list keeps the cursor on
 // the pile, whose location is also that of the list's first card.
 static uint16_t g_listCursor = 0xFFFF;
+// The last card or place the cursor and the details panel each spoke: the panel and the cursor can alternate every frame.
+static uint32_t g_lastCursorKey = ~0u, g_lastPanelKey = ~0u;  // game thread only
+// The panel also shows field cards it doesn't say (materials being picked): repeats are checked against the last
+// card it said, or the card being summoned is said again after each material.
+static uint32_t g_lastSaidPanelKey = ~0u;
+static std::atomic<int16_t> g_panelId;  // the card the details panel shows
 
 // A card's instance number (unique per duel) from its pile or zone word, as the engine's lookup 0x140044480 reads it.
 static int InstanceOf(uint32_t word) { return (int)((word >> 14) & 1) + (int)((word >> 23) & 0xFF) * 2; }
@@ -326,6 +345,14 @@ static int __fastcall DuelAnimHook(int anim, int a2, int a3, int a4) {
             say = (to.side ? L"Opponent adds " : L"You add ") + Name(CardAt(to)) + L" from the Deck to the hand";
         } else if (from.zone == 13 && to.zone <= 12) {
             // Hand to field: the summon, set or activation that follows names the card and the zone.
+        } else if (IsMaterial(to)) {
+            // Attached: from the field, the material events (84) named it; from a pile it is gone and can't be named.
+            if (from.zone > 6)
+                say = (from.side ? L"Opponent's card from " : L"Your card from ") + Place(from) + L" becomes Xyz Material in " + Where(Loc{to.side, to.zone, 0});
+        } else if (IsMaterial(from)) {
+            int16_t id = Known(to) ? CardAt(to) : 0;
+            say = (from.side ? L"Opponent's " : L"Your ") + (id ? Name(id) : L"card") + L" is detached from " +
+                  Place(Loc{from.side, from.zone, 0}) + L" and goes to " + (to.side != from.side ? Where(to) : Place(to));
         } else if (to.zone > 17) {
             // Nowhere: a token leaving the field. It is gone already, so it can't be named.
             say = (from.side ? L"Opponent's token in " : L"Your token in ") + Place(from) + L" leaves the field";
@@ -405,8 +432,9 @@ static int __fastcall DuelAnimHook(int anim, int a2, int a3, int a4) {
         else say = CardName(l, L"A face-down monster") + L" in " + Where(l) + L" is now in " + PositionName(slot) + L" position";
         break;
     }
-    case 15:  // LP_Set: side, LP (8000 at the start)
+    case 15:  // LP_Set: side, LP (8000 at the start; also when a tutorial sets the duel up again)
         g_lp[a2 & 1] = a3;
+        g_dealt = false;  // the hands dealt next come before "Duel start"
         break;
     case 16:  // LP_Change: side, delta, a4 0x101 then 0x100 for the same change. Sent before the LP is applied.
         if (a4 & 1) {
@@ -448,6 +476,7 @@ static int __fastcall DuelAnimHook(int anim, int a2, int a3, int a4) {
     case 56:  // SelectOption: a list or option to pick from opens
         g_listAt = GetTickCount64();
         if (g_cursor) g_listCursor = *g_cursor;
+        g_lastPanelKey = g_lastSaidPanelKey = ~0u;  // its first card is said even if the panel just showed it
         break;
     case 55:  // Message: kind, a3, a4. (4, 1, 0) is sent constantly with nothing shown.
         if (a2 != 4 || a4 != 0) MenuExpectMessage();  // a box (Ok, or Yes/No) follows
@@ -502,17 +531,15 @@ static std::wstring DescribeCard(Loc l, int16_t id) {
         else if (FaceDown(slot)) say += L", set";
     }
     say += L", " + Where(l);
+    if (InPendulumZone(l)) {
+        std::wstring summary = CardSummary(id);
+        say += L", Scale " + std::to_wstring(_wtoi(summary.c_str() + summary.find(L"Scale ") + 6));
+    }
     if (l.zone <= 6 && FieldSlot(l))
         if (std::wstring stats = Stats(l.side, l.zone, id); !stats.empty()) say += L", " + stats;
     if (l.zone == 13) say += L", " + std::to_wstring(l.index + 1) + L" of " + std::to_wstring(CountOf(l.side, kHandCount));
     return say;
 }
-
-// The last card or place the cursor and the details panel each spoke: the panel and the cursor can alternate every frame.
-static uint32_t g_lastCursorKey = ~0u, g_lastPanelKey = ~0u;  // game thread only
-// The panel also shows field cards it doesn't say (materials being picked): repeats are checked against the last
-// card it said, or the card being summoned is said again after each material.
-static uint32_t g_lastSaidPanelKey = ~0u;
 
 // The duel cursor (the pointing hand): 0x14278EE78 holds where it is, packed like animation locations. Every move
 // (keys, the engine pointing at a card) ends in 0x140773660, hooked here. Moves the player makes are spoken: the
@@ -545,6 +572,13 @@ static std::wstring CursorText(Loc l, int16_t& id) {
 
 std::wstring DuelCursorText(const std::wstring& prompt) {
     if (!g_cursor || !InDuel()) return L"";
+    // A summoned card's position ("Select the battle position of the card.") is asked about the card in the panel,
+    // not the cursor's: a Pendulum Summon asks once per card.
+    if (int16_t id = g_panelId; id > 0 && prompt.find(L"battle position of the card") != std::wstring::npos) {
+        std::wstring summary = CardSummary(id);
+        size_t atAtk = summary.find(L"ATK ");
+        return Name(id) + (atAtk != std::wstring::npos ? L", " + summary.substr(atAtk) : L"");
+    }
     if (GetTickCount64() - g_listAt < 2000) return L"";  // a list to pick from is open: the field cursor isn't in use
     Loc l = Unpack(*g_cursor);
     if (l.zone > 17) return L"";
@@ -589,11 +623,13 @@ static void __fastcall ShowCardHook(void* widget, const uint8_t* info) {
     uint16_t ref = *(const uint16_t*)(info + 8);
     int16_t id = *(const int16_t*)(info + 6);
     uint32_t key = (uint32_t)ref << 16 | (uint16_t)id;
+    if (id > 0) g_panelId = id;
     if (key == g_lastPanelKey || id <= 0) return;
     g_lastPanelKey = key;
     Loc l = Unpack(ref);
     bool located = l.zone <= 17 && g_state;
-    bool onField = located && l.zone <= 12;
+    bool material = located && IsMaterial(l);  // in a list of an Xyz Monster's materials (Show Card List, detaching)
+    bool onField = located && l.zone <= 12 && !material;
     // The panel shows the card's face, so it is known, except a face-down card on the field (the panel shows it to
     // its owner only).
     if (!onField || Known(l)) SetCardInfo(id);
@@ -604,10 +640,13 @@ static void __fastcall ShowCardHook(void* widget, const uint8_t* info) {
     bool asked = now - MenuLastGameKeyAt() < 1000 || now - g_listAt < 2000;
     // The card on the pile under the cursor, which the cursor said; with that pile's list open, the list's first card.
     bool listOpen = g_cursor && *g_cursor == g_listCursor;
-    bool atCursor = g_cursor && !listOpen && (ref & 0x3FFF) == (*g_cursor & 0x3FFF);  // 0x4000: card ref flag    // The hand is the cursor's too: the panel re-shows hand cards as they are picked as materials.
-    if (onField || l.zone == 13 || (located && (!asked || atCursor)) || key == g_lastSaidPanelKey) return;
+    bool atCursor = g_cursor && !listOpen && (ref & 0x3FFF) == (*g_cursor & 0x3FFF);  // 0x4000: card ref flag
+    // The hand is the cursor's too (the panel re-shows hand cards as they are picked as materials), except in a list
+    // to pick from (a Pendulum Summon's hand list), where the cursor stays on the field.
+    if (onField || (l.zone == 13 && !listOpen) || (located && (!asked || atCursor)) || key == g_lastSaidPanelKey) return;
     g_lastSaidPanelKey = key;
-    Say(located ? Name(id) + L", " + Where(l) : Name(id), true);
+    if (material) Say(Name(id) + L", Xyz Material of " + Where(Loc{l.side, l.zone, 0}), true);
+    else Say(located ? Name(id) + L", " + Where(l) : Name(id), true);
 }
 
 // "Use which effect of X?" (YGO_FRONT::DUEL_DIALOG_SELECT_EFFECT): tabs "Choice 1".."Choice N" over one description
@@ -670,12 +709,73 @@ std::wstring DuelAnnotate(const std::wstring& text) {
 // Leaving a duel without a result (Pause menu > Exit Game) sends no DuelEnd, and the duel's objects outlive it.
 // ExGameDuel::OnDispatch (vtable slot 5, 0x1407EBA30) runs every frame of a duel: a duel whose dispatch stopped
 // is over.
+// Lists to pick cards from (YGO_FRONT::DUEL_CARD_LIST_INFO) hold their Sort window at +0x3D0, which menu.cpp sees
+// shown every frame. +0xD38: the number of cards; +0xD40: 0x10 bytes per card, whose dword at +8 has the card id in
+// the low 14 bits and its place in the selection order (1, 2, ...; 0 not selected) from bit 16. Deselecting renumbers
+// the rest. Checked every duel frame; picking a card said nothing (only a small counter is drawn).
+static void** g_cardListVTable;
+static std::atomic<uint8_t*> g_cardList;
+static ULONGLONG g_cardListAt;  // when the list's Sort window was last shown
+void DuelSortWindowShown(const void* sortWindow) {
+    g_cardList = (uint8_t*)sortWindow - 0x3D0;
+    g_cardListAt = GetTickCount64();
+}
+
+constexpr int kMaxListCards = 120;
+static int ReadListWords(const uint8_t* list, uint32_t* words) {
+    __try {
+        if (*(void* const*)list != g_cardListVTable) return -1;
+        int n = *(const int*)(list + 0xD38);
+        if (n < 0 || n > kMaxListCards) return -1;
+        for (int i = 0; i < n; ++i) words[i] = *(const uint32_t*)(list + 0xD40 + i * 0x10 + 8);
+        return n;
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        return -1;
+    }
+}
+
+static void CheckListSelection() {
+    static uint32_t last[kMaxListCards];  // game thread only
+    static int lastCount = -1;
+    static ULONGLONG lastOpenAt, pendingAt;
+    static std::wstring pending;
+    uint8_t* list = g_cardList;
+    uint32_t words[kMaxListCards];
+    int n = list && g_cardListVTable && GetTickCount64() - g_cardListAt < 500 ? ReadListWords(list, words) : -1;
+    bool fresh = n != lastCount || lastOpenAt != g_listAt;  // a new list: its cards aren't picks
+    for (int i = 0; i < n && !fresh; ++i) fresh = (words[i] & 0x3FFF) != (last[i] & 0x3FFF);
+    if (n > 0 && !fresh) {
+        std::wstring say;
+        int selected = 0;
+        for (int i = 0; i < n; ++i) {
+            selected += (words[i] >> 16) != 0;
+            bool now = (words[i] >> 16) != 0, before = (last[i] >> 16) != 0;
+            if (now != before) say = Name(IdOf(words[i])) + (now ? L" selected" : L" deselected");
+        }
+        if (!say.empty()) {
+            if (selected > 1) say += L", " + std::to_wstring(selected) + L" selected";
+            pending = say;
+            pendingAt = GetTickCount64();
+        }
+    }
+    // Said a moment later, queued: the same key often lights the list's OK button, whose speech interrupts.
+    if (!pending.empty() && GetTickCount64() - pendingAt >= 150) {
+        Say(pending, false);
+        pending.clear();
+    }
+    lastCount = n;
+    lastOpenAt = g_listAt;
+    for (int i = 0; i < n; ++i) last[i] = words[i];
+}
+
 using DuelDispatchFn = void(__fastcall*)(void* game, double dt);
 static DuelDispatchFn g_duelDispatch;
 static void __fastcall DuelDispatchHook(void* game, double dt) {
     g_duelFrameAt = GetTickCount64();
     g_duelDispatch(game, dt);
+    CheckListSelection();
 }
+
 
 bool DuelHooksInstall() {
     if (uint8_t* get = FindInGame("Get_EffectiveAtk",
@@ -687,6 +787,7 @@ bool DuelHooksInstall() {
         MH_EnableHook(vt[5]);
     else Log("Could not hook ExGameDuel::OnDispatch");
     // A struct in this build (.?AU); the class name (.?AV) is the fallback, so the found one is tried first.
+    g_cardListVTable = FindVTable(".?AUDUEL_CARD_LIST_INFO@YGO_FRONT@@");
     g_effectDialogVTable = FindVTable(".?AUDUEL_DIALOG_SELECT_EFFECT@YGO_FRONT@@");
     if (!g_effectDialogVTable) g_effectDialogVTable = FindVTable(".?AVDUEL_DIALOG_SELECT_EFFECT@YGO_FRONT@@");
     if (!g_effectDialogVTable) Log("No vtable for DUEL_DIALOG_SELECT_EFFECT");
