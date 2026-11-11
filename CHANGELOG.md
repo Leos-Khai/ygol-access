@@ -2,6 +2,19 @@
 
 The newest version comes first. Each version lists the features and fixes you'll notice; small internal changes are left out.
 
+## Unreleased
+
+### New
+
+- **Picks in card lists are confirmed.** When you pick cards from a list in a duel, each pick is read, with the running count once you have more than one: "Archfiend Soldier selected", "Air Eater selected, 2 selected", "Archfiend Soldier deselected". Before, nothing told you whether a card was picked.
+- **Pendulum Zones.** A Pendulum card in spell and trap zone 1 or 5 is read as being in a Pendulum Zone, with its Scale: "Flash Knight, your Pendulum Zone 1, Scale 7", "You activate Performapal Turn Toad in Pendulum Zone 2".
+
+### Fixed
+
+- **Xyz Materials.** An Xyz Monster's materials are now read in Show Card List and when you pick which ones to detach: "Aqua Snake, Xyz Material of your monster zone 3". Before, these lists were silent. Detaching reads "Your Aqua Snake is detached from monster zone 3 and goes to Graveyard". An Xyz Summon no longer reads its materials moving as "Your card goes from monster zone 3 to monster zone 3".
+- **Pendulum Summons from the hand.** The list of hand cards to Pendulum Summon now reads each card as you move: "Archfiend Soldier, your hand". The position question names the card it is for: "Select the battle position of the card. Air Eater, ATK 2100, DEF 1600".
+- **Tutorial setups read as draws.** When a tutorial sets the duel up again partway through, the hand it deals is no longer read as a string of "You draw…" lines.
+
 ## 0.1.4 (November 5, 2026)
 
 ### Fixed
