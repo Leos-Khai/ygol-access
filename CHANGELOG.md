@@ -2,6 +2,12 @@
 
 The newest version comes first. Each version lists the features and fixes you'll notice; small internal changes are left out.
 
+## Unreleased
+
+### New
+
+- **Reverse Duel on the campaign duel list.** Pressing X on a duel you've unlocked it for switches between a Reverse Duel, where you play as the opponent, and a Normal Duel. Before, only a sound played. Now you hear "Reverse Duel" or "Normal Duel". When the game switches a duel back to Normal because you moved to another one, that's read before the duel's name: "Normal Duel, The Shadow Duelist".
+
 ## 0.1.5 (November 11, 2026)
 
 ### New
