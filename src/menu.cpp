@@ -1017,6 +1017,18 @@ static void __fastcall SetVolumeHook(int channel, int level) {
     AnnounceItem({{{nullptr, std::to_wstring(std::clamp(level, 0, 10))}}, {}, GetTickCount64()});
 }
 
+// Campaign duel list (ScreenSelectRung): X toggles Reverse Duel (play as the opponent) on a duel that has it
+// unlocked, with only a sound and the card turning round. The game resets it to Normal when the cursor moves to
+// another duel and when the list opens; those changes are said too, before the duel's name.
+using SetReverseDuelFn = void(__fastcall*)(char on);
+static SetReverseDuelFn g_setReverseDuel;
+static char* g_reverseDuel;  // the setter's global, read before the call to tell a change from a repeat
+static void __fastcall SetReverseDuelHook(char on) {
+    bool changed = (*g_reverseDuel != 0) != (on != 0);
+    g_setReverseDuel(on);
+    if (changed) AnnounceItem({{{nullptr, on ? L"Reverse Duel" : L"Normal Duel"}}, {}, GetTickCount64()});
+}
+
 static bool Hook(void* target, void* detour, void** original, const char* name) {
     if (target && MH_CreateHook(target, detour, original) == MH_OK && MH_EnableHook(target) == MH_OK) return true;
     Log("Could not hook %s", name);
@@ -1051,6 +1063,13 @@ bool MenuHooksInstall() {
          (void*)&SetCardHook, (void**)&g_setCard, "widget_Card::SetCard");
     Hook(FindInGame("SetVolume", "48 89 5C 24 08 57 48 83 EC 30 0F 29 74 24 20 48 8D 3D ?? ?? ?? ?? 48 63 D9 85 D2 7F 04 33 D2"),
          (void*)&SetVolumeHook, (void**)&g_setVolume, "SetVolume");
+    // The X handler: "cmp byte [rdi+0x15F0],0; sete cl; mov [rdi+0x15F0],cl; call SetReverseDuel". The setter starts
+    // "movzx edx, byte [rip+global]", which gives the global.
+    if (uint8_t* at = FindInGame("SetReverseDuel", "80 BF F0 15 00 00 00 0F 94 C1 88 8F F0 15 00 00 E8")) {
+        uint8_t* setter = at + 21 + *(const int32_t*)(at + 17);
+        g_reverseDuel = (char*)(setter + 7 + *(const int32_t*)(setter + 3));
+        Hook(setter, (void*)&SetReverseDuelHook, (void**)&g_setReverseDuel, "SetReverseDuel");
+    }
     g_onTextChanged = &OnTextChanged;
     g_onHighlight = &OnHighlight;
     // Without the description hook, focus still works; only tooltips are lost.

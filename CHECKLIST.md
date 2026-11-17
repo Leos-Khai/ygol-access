@@ -76,6 +76,7 @@ Notes (how menu speech works, all in `src/menu.cpp`):
 - Filter options (`widget_TrunkFilterMaskOption`): check-mark sprite at +0xA0 (+0x24 index), 0x150 = selected; `RefreshCheck` (0x1408BAC10) announces toggles. Helper buttons (`widget_ButtonHelp`) are dropped like toolbars.
 - Deck stats (`widget_DeckStats::Refresh` 0x1408973A0): 10 counts from its source's vtable slot 2, in the bar's colour order (Normal, Effect, Ritual, Fusion, Synchro, Spell, Trap, Xyz, Pendulum, Link; checked against Best Hero: 40 main + 15 extra).
 - The campaign's empty duel slot reads "Not available".
+- Reverse Duel (campaign duel list, `ScreenSelectRung`): X on a duel with it unlocked flips the screen's +0x15F0 and passes it to a one-byte setter (global 0x140C8D1E4), found through the X handler's call. The game also resets it to Normal when the cursor moves to another duel and when the list opens. Every change is said ("Reverse Duel", "Normal Duel, The Shadow Duelist").
 
 ## 5. Duels
 - [x] Speak phase changes, turn changes and LP changes ("Turn 3, your turn. Your Draw Phase", "You lose 1600 LP, now 6400")
