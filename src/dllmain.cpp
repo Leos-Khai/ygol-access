@@ -49,6 +49,8 @@ constexpr DWORD kMaskKey = 0xE8;
 //   R   read the player's name and DP (in the deck editor: the deck's card counts)
 //   H   read both duelists' life points
 //   I   read the focused card's full info
+//   Alt+Up / Alt+Down  previous/next chunk of the focused card's full info
+// Alt, not Ctrl: the game moves its menu cursor to the top when Ctrl is pressed and released.
 // In a duel (Alt + the key: the opponent's):
 //   F   field (monster, spell/trap and field zones)      G   graveyard        V   banished cards
 //   U   hand (the opponent's: a count)                    E   Extra Deck       T   turn, phase, deck counts
@@ -60,18 +62,25 @@ static bool IsHotkey(DWORD vk) {
 static LRESULT CALLBACK KeyboardHook(int code, WPARAM wParam, LPARAM lParam) {
     static bool down[256];  // the hook sees auto-repeat as more key-downs; act on the first only
     auto* key = (KBDLLHOOKSTRUCT*)lParam;
-    if (code == HC_ACTION && key->vkCode == kMaskKey) return CallNextHookEx(nullptr, code, wParam, lParam);
-    if (code == HC_ACTION && (wParam == WM_KEYDOWN || wParam == WM_SYSKEYDOWN) && GameHasFocus()) MenuAnyKeyPressed(!IsHotkey(key->vkCode));
-    if (code == HC_ACTION && (key->vkCode == VK_LEFT || key->vkCode == VK_RIGHT) && wParam == WM_KEYDOWN && GameHasFocus()) {
+    if (code != HC_ACTION) return CallNextHookEx(nullptr, code, wParam, lParam);
+    if (key->vkCode == kMaskKey) return CallNextHookEx(nullptr, code, wParam, lParam);
+
+    bool isDown = wParam == WM_KEYDOWN || wParam == WM_SYSKEYDOWN;
+    bool isUp = wParam == WM_KEYUP || wParam == WM_SYSKEYUP;
+    bool alt = (key->flags & LLKHF_ALTDOWN) != 0;
+    bool altArrow = alt && (key->vkCode == VK_UP || key->vkCode == VK_DOWN);
+    bool hotkey = altArrow || IsHotkey(key->vkCode);
+
+    if (isDown && GameHasFocus()) MenuAnyKeyPressed(!hotkey);
+    if ((key->vkCode == VK_LEFT || key->vkCode == VK_RIGHT) && wParam == WM_KEYDOWN && GameHasFocus()) {
         MenuValueKeyPressed();  // the game still gets the key
     }
-    if (code == HC_ACTION && IsHotkey(key->vkCode) && GameHasFocus()) {
-        bool isDown = wParam == WM_KEYDOWN || wParam == WM_SYSKEYDOWN;
-        bool alt = (key->flags & LLKHF_ALTDOWN) != 0;
+    if (hotkey && GameHasFocus()) {
         if (isDown && !down[key->vkCode]) PostThreadMessageW(g_hotkeyThread, WM_APP_HOTKEY, key->vkCode, alt);
         down[key->vkCode] = isDown;
         return 1;
     }
+    if (isUp) down[key->vkCode] = false;  // also when Alt was released first
     return CallNextHookEx(nullptr, code, wParam, lParam);
 }
 
@@ -121,7 +130,8 @@ static DWORD WINAPI Startup(void*) {
     MSG msg;
     while (GetMessageW(&msg, nullptr, 0, 0) > 0) {
         if (msg.message != WM_APP_HOTKEY) continue;
-        if (msg.lParam) {
+        bool alt = msg.lParam != 0;
+        if (alt) {
             INPUT mask[2] = {};
             mask[0].type = mask[1].type = INPUT_KEYBOARD;
             mask[0].ki.wVk = mask[1].ki.wVk = (WORD)kMaskKey;
@@ -131,15 +141,17 @@ static DWORD WINAPI Startup(void*) {
         if (msg.wParam == VK_F1) {
             Log("hotkey help");
             Speak("Hotkeys. F1: this help. F5: read the screen. R: your name and DP; in the deck editor, the deck's "
-                  "card counts. H: life points. I: the focused card's full info. In a duel: F field, U hand, "
-                  "G graveyard, V banished, E Extra Deck, T turn and phase. Hold Alt with F, U, G, V or E for the "
-                  "opponent's.");
+                  "card counts. H: life points. I: the focused card's full info. Alt+Up and Alt+Down: the previous "
+                  "and next chunk of that info. In a duel: F field, U hand, G graveyard, V banished, E Extra Deck, "
+                  "T turn and phase. Hold Alt with F, U, G, V or E for the opponent's.");
         }
+        if (alt && msg.wParam == VK_UP) MenuReadCardChunk(-1);
+        if (alt && msg.wParam == VK_DOWN) MenuReadCardChunk(1);
         if (msg.wParam == VK_F5) SpeakScreen();
         if (msg.wParam == 'R' && !MenuSpeakDeckStats()) SpeakStatus();  // deck editor: its stats; elsewhere: DP
         if (msg.wParam == 'H') SpeakLifePoints();
         if (msg.wParam == 'I') MenuSpeakCardInfo();
-        int side = msg.lParam ? 1 : 0;  // Alt: the opponent's
+        int side = alt ? 1 : 0;  // Alt: the opponent's
         if (msg.wParam == 'F') DuelSpeakField(side);
         if (msg.wParam == 'G') DuelSpeakGraveyard(side);
         if (msg.wParam == 'V') DuelSpeakBanished(side);
