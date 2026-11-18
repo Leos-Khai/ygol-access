@@ -20,6 +20,7 @@ The game loads `xinput9_1_0.dll` from its own folder before the system one, so t
 | `src/menu.cpp` | Menu speech: focus, descriptions, values, popups, cards, story text |
 | `src/duel.cpp` | Duel speech: engine events, the cursor, prompts, materials, board review |
 | `src/cards.cpp` | Card summaries from the game's `CARD_Prop.bin` |
+| `src/reading.cpp` | Card-info sections and the Alt+Up/Down chunk splitter |
 | `src/scan.cpp`, `src/rtti.cpp` | Finding code by pattern and classes by RTTI; counts what is not found |
 | `CHECKLIST.md` | Progress, plus the addresses, offsets and findings behind each feature |
 

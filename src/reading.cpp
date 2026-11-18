@@ -21,6 +21,42 @@ void AddChunk(std::vector<std::wstring>& out, std::wstring_view text) {
     if (!text.empty()) out.emplace_back(text.data(), text.size());
 }
 
+bool EndsSentence(std::wstring_view text) {
+    size_t i = text.size();
+    while (i > 0) {
+        wchar_t c = text[i - 1];
+        if (IsQuote(c) || c == L')' || c == L']') {
+            --i;
+            continue;
+        }
+        return c == L'.' || c == L'!' || c == L'?';
+    }
+    return false;
+}
+
+// Where a monster summary's level/rank/link and stats begin. Split there so the type/attribute line is its own
+// chunk and the numbers stay together.
+size_t StatsStart(std::wstring_view summary) {
+    static constexpr std::wstring_view kMarkers[] = {L", Level ", L", Rank ", L", Link ", L", Scale ", L", ATK "};
+    for (std::wstring_view marker : kMarkers) {
+        size_t at = summary.find(marker);
+        if (at != std::wstring_view::npos) return at;
+    }
+    return std::wstring_view::npos;
+}
+
+// Adds a section on its own line, with a full stop before it if the previous section does not already end a
+// sentence (the card name and summary do not).
+void AppendSection(std::wstring& out, std::wstring_view section) {
+    section = Trim(section);
+    if (section.empty()) return;
+    if (!out.empty()) {
+        if (!EndsSentence(out)) out += L'.';
+        out += L'\n';
+    }
+    out.append(section.data(), section.size());
+}
+
 // After a sentence ending followed by whitespace, or at the end of the text. Punctuation inside a quoted card
 // name does not end a sentence.
 size_t SentenceEnd(std::wstring_view text, size_t from) {
@@ -124,4 +160,18 @@ size_t StepReadingChunk(size_t index, size_t count, int direction) {
     if (direction < 0) return index == 0 ? count - 1 : index - 1;
     if (direction > 0) return index + 1 == count ? 0 : index + 1;
     return index;
+}
+
+std::wstring BuildCardInfo(std::wstring_view name, std::wstring_view summary, std::wstring_view text,
+                           std::wstring_view copies) {
+    std::wstring out;
+    AppendSection(out, name);
+
+    std::wstring summaryText(summary);
+    if (size_t at = StatsStart(summaryText); at != std::wstring::npos) summaryText.replace(at, 2, L"\n");
+    AppendSection(out, summaryText);
+
+    AppendSection(out, text);
+    AppendSection(out, copies);
+    return out;
 }

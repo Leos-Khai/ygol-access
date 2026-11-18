@@ -629,13 +629,6 @@ static void AddTipLocked(const void* layer, std::wstring text) {
 
 constexpr char kCardClass[] = ".?AVwidget_Card@RIX@@";
 
-// "First. Second", without doubling a full stop the first already ends with.
-static void AppendSentence(std::wstring& out, const std::wstring& next) {
-    if (next.empty()) return;
-    if (!out.empty()) out += (out.back() == L'.' || out.back() == L'!' || out.back() == L'?') ? L" " : L". ";
-    out += next;
-}
-
 // A card shows its name as part of its picture, so it is looked up by the card id the widget holds. Browsing
 // says the name (and New, and where it is); I says the rest: kind/attribute/type/level/ATK/DEF (the details
 // panel shows those as bare numbers or pictures), the card's text and its count badge.
@@ -643,13 +636,18 @@ static void MakeCardFocus(const uint8_t* widget, Focus& focus) {
     int16_t id = *(const int16_t*)(widget + kCardIdOffset);
     const wchar_t* name = id != -1 && g_cardName ? g_cardName(id) : nullptr;
     if (!name || !*name) return;
-    std::wstring info = CleanForSpeech(name);
-    std::vector<Focus::Piece> card{{nullptr, info}};
+    std::wstring cardName = CleanForSpeech(name);
+    std::vector<Focus::Piece> card{{nullptr, cardName}};
     if (IsNewCard(id)) card.push_back({nullptr, L"New"});
     if (std::wstring position = CardPosition(widget); !position.empty()) card.push_back({nullptr, position});
-    AppendSentence(info, CardSummary(id));
-    if (const wchar_t* text = g_cardText ? g_cardText(id) : nullptr; text && *text) AppendSentence(info, CleanForSpeech(text));
-    for (const Focus::Piece& badge : focus.pieces) AppendSentence(info, badge.text + L" copies");
+    std::wstring text;
+    if (const wchar_t* raw = g_cardText ? g_cardText(id) : nullptr; raw && *raw) text = CleanForSpeech(raw);
+    std::wstring copies;
+    for (const Focus::Piece& badge : focus.pieces) {
+        if (!copies.empty()) copies += L'\n';
+        copies += badge.text + L" copies";
+    }
+    std::wstring info = BuildCardInfo(cardName, CardSummary(id), text, copies);
     focus.pieces = std::move(card);
     focus.card = true;
     std::lock_guard lock(g_mutex);

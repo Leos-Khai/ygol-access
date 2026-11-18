@@ -42,6 +42,50 @@ int main() {
     assert(SplitForReading(L"short\nA long enough sentence here. Another sentence.", 20) ==
            (Chunks{L"short", L"A long enough", L"sentence here.", L"Another sentence."}));
 
+    // Card info is built with one section per line: name, attributes, stats, text, copies.
+    assert(BuildCardInfo(L"Archfiend Commander", L"Effect monster, DARK Fiend, Level 6, ATK 2500, DEF 1200",
+                         L"If you control an \"Archfiend\" card.", L"1 copies") ==
+           L"Archfiend Commander.\nEffect monster, DARK Fiend\nLevel 6, ATK 2500, DEF 1200.\n"
+           L"If you control an \"Archfiend\" card.\n1 copies");
+
+    Chunks archfiend = SplitForReading(BuildCardInfo(
+        L"Archfiend Commander", L"Effect monster, DARK Fiend, Level 6, ATK 2500, DEF 1200",
+        L"If you control an \"Archfiend\" card.", L"1 copies"));
+    assert(archfiend == (Chunks{L"Archfiend Commander.", L"Effect monster, DARK Fiend",
+                                L"Level 6, ATK 2500, DEF 1200.", L"If you control an \"Archfiend\" card.",
+                                L"1 copies"}));
+
+    // A dotted card name stays in one chunk.
+    Chunks bes = SplitForReading(BuildCardInfo(
+        L"B.E.S. Tetran", L"Effect monster, DARK Machine, Level 4, ATK 1800, DEF 1000",
+        L"When this card is Normal Summoned, put 3 counters on it.", L"1 copies"));
+    assert(bes[0] == L"B.E.S. Tetran.");
+
+    Chunks dd = SplitForReading(BuildCardInfo(
+        L"D.D. Assailant", L"Effect monster, EARTH Warrior, Level 4, ATK 1700, DEF 1600",
+        L"After damage calculation, when this card is destroyed by battle: banish this card.", L"1 copies"));
+    assert(dd[0] == L"D.D. Assailant.");
+
+    // The material line no longer joins the name, attributes and stats into one chunk.
+    Chunks skull = SplitForReading(BuildCardInfo(
+        L"B. Skull Dragon", L"Fusion monster, DARK Dragon, Level 9, ATK 3200, DEF 2500",
+        L"\"Summoned Skull\" + \"Red-Eyes B. Dragon\"", L"1 copies"));
+    assert(skull == (Chunks{L"B. Skull Dragon.", L"Fusion monster, DARK Dragon",
+                            L"Level 9, ATK 3200, DEF 2500.",
+                            L"\"Summoned Skull\" + \"Red-Eyes B. Dragon\".", L"1 copies"}));
+
+    // Link ratings split from the type line like Level and Rank.
+    Chunks link = SplitForReading(BuildCardInfo(
+        L"Link Card", L"Link Effect monster, LIGHT Cyberse, Link 3, ATK 2300, arrows top", L"", L""));
+    assert(link == (Chunks{L"Link Card.", L"Link Effect monster, LIGHT Cyberse",
+                           L"Link 3, ATK 2300, arrows top"}));
+
+    // Copies are always their own final chunk.
+    Chunks banner = SplitForReading(BuildCardInfo(
+        L"Banner of Courage", L"Continuous Spell",
+        L"All monsters you control gain 200 ATK during your Battle Phase only.", L"0 copies"));
+    assert(banner.back() == L"0 copies");
+
     // Wrapping in both directions.
     assert(StepReadingChunk(0, 3, -1) == 2);
     assert(StepReadingChunk(2, 3, 1) == 0);
