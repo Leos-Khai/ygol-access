@@ -2,6 +2,12 @@
 
 The newest version comes first. Each version lists the features and fixes you'll notice; small internal changes are left out.
 
+## Unreleased
+
+### New
+
+- **Read a card's info one part at a time.** Alt+Down reads the next part of the focused card's info and Alt+Up the previous one: the name, then its type ("Effect monster, DARK Fiend"), its stats ("Level 6, ATK 2500, DEF 1200"), its text a line or sentence at a time, and last how many copies you own. It wraps at both ends, so Alt+Up on a card you've just moved to goes straight to the copy count. A card name in quotes is never split across two parts. I still reads everything at once. Thanks to weng-hang for contributing this.
+
 ## 0.1.6 (November 17, 2026)
 
 ### New
