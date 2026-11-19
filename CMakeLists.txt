@@ -23,7 +23,7 @@ FetchContent_Declare(minhook
     EXCLUDE_FROM_ALL)  # skips MinHook's own install rules
 FetchContent_MakeAvailable(minhook)
 
-add_library(ygol_access SHARED src/dllmain.cpp src/speech.cpp src/scan.cpp src/text.cpp src/rtti.cpp src/menu.cpp src/cards.cpp src/duel.cpp)
+add_library(ygol_access SHARED src/dllmain.cpp src/speech.cpp src/scan.cpp src/text.cpp src/rtti.cpp src/menu.cpp src/cards.cpp src/duel.cpp src/reading.cpp)
 set_target_properties(ygol_access PROPERTIES OUTPUT_NAME xinput9_1_0)
 target_compile_definitions(ygol_access PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX)
 target_compile_options(ygol_access PRIVATE /W4 /utf-8)
@@ -34,6 +34,8 @@ add_executable(scan_test tests/scan_test.cpp src/scan.cpp)
 add_test(NAME scan_test COMMAND scan_test)
 add_executable(cards_test tests/cards_test.cpp src/cards.cpp)
 add_test(NAME cards_test COMMAND cards_test)
+add_executable(reading_test tests/reading_test.cpp src/reading.cpp)
+add_test(NAME reading_test COMMAND reading_test)
 
 install(TARGETS ygol_access RUNTIME DESTINATION "${GAME_DIR}")
 install(FILES "${PRISM_DIR}/dynamic/release/bin/prism.dll" DESTINATION "${GAME_DIR}")

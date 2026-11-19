@@ -29,6 +29,10 @@ void MenuExpectMessage();
 // Speaks the focused card's full info (summary, text, copies): the I key.
 void MenuSpeakCardInfo();
 
+// Speaks the previous (-1) or next (+1) chunk of the focused card's info, wrapping at both ends
+// (Alt+Up/Down).
+void MenuReadCardChunk(int direction);
+
 // Sets what I reads (the duel's card under the cursor).
 void MenuSetCardInfo(const std::wstring& info);
 

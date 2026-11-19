@@ -29,6 +29,7 @@
 
 #include "cards.h"
 #include "menu.h"
+#include "reading.h"
 #include "rtti.h"
 #include "scan.h"
 #include "speech.h"
@@ -511,10 +512,7 @@ static void __fastcall JankenChooseHook(uint8_t* janken) {
 
 // What I reads for a card: name, summary, text.
 static void SetCardInfo(int16_t id) {
-    std::wstring info = Name(id);
-    if (std::wstring summary = CardSummary(id); !summary.empty()) info += L". " + summary;
-    if (std::wstring text = GameCardText(id); !text.empty()) info += L". " + text;
-    MenuSetCardInfo(info);
+    MenuSetCardInfo(BuildCardInfo(Name(id), CardSummary(id), GameCardText(id)));
     MenuSuppressLive(Name(id));  // the details panel's own text would repeat it
 }
 

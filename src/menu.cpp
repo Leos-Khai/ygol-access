@@ -24,6 +24,7 @@
 
 #include "cards.h"
 #include "duel.h"
+#include "reading.h"
 #include "rtti.h"
 #include "scan.h"
 #include "speech.h"
@@ -293,6 +294,11 @@ static std::vector<std::wstring> g_recentItems;                  // texts of the
 
 static bool g_lastItemWasCard;  // the last item spoken was a card
 static std::wstring g_cardInfo;  // the focused card's full info for the I key; cleared when focus leaves cards
+static uint64_t g_cardVersion;   // changes whenever g_cardInfo does, so a chunk list is never stale
+static std::vector<std::wstring> g_readChunks;  // g_cardInfo split for Alt+Up/Down
+static size_t g_readIndex;
+static bool g_readStarted;  // a chunk has been read since the info changed or I was pressed
+static uint64_t g_readVersion;
 static std::vector<const void*> g_sortLayers;  // labels of sort bars: a change is announced as "Sort by: ..."
 
 static void SpeakW(const std::wstring& text, bool interrupt);
@@ -302,8 +308,37 @@ void MenuSpeakCardInfo() {
     {
         std::lock_guard lock(g_mutex);
         info = g_cardInfo;
+        g_readStarted = false;  // I reads it all: the next Alt+Up/Down starts at an end again
     }
     SpeakW(info.empty() ? L"No card selected" : info, true);
+}
+
+// Alt+Up/Down: chunks of the same string I reads. The first press starts at an end; later presses wrap.
+void MenuReadCardChunk(int direction) {
+    std::wstring chunk;
+    {
+        std::lock_guard lock(g_mutex);
+        if (g_cardInfo.empty()) {
+            chunk = L"No card selected";
+        } else {
+            if (g_readVersion != g_cardVersion || g_readChunks.empty()) {
+                g_readChunks = SplitForReading(g_cardInfo);
+                g_readVersion = g_cardVersion;
+                g_readStarted = false;
+            }
+            if (g_readChunks.empty()) {
+                chunk = L"No card text";
+            } else if (!g_readStarted) {
+                g_readIndex = direction < 0 ? g_readChunks.size() - 1 : 0;
+                g_readStarted = true;
+                chunk = g_readChunks[g_readIndex];
+            } else {
+                g_readIndex = StepReadingChunk(g_readIndex, g_readChunks.size(), direction);
+                chunk = g_readChunks[g_readIndex];
+            }
+        }
+    }
+    SpeakW(chunk, true);
 }
 
 // After a card, the details panel only repeats it: keep just the help bar's description.
@@ -480,7 +515,10 @@ static void AnnouncerThread() {
             bool duelButton = std::all_of(g_items.begin(), g_items.end(), [](const Focus& f) { return f.highlight; }) && DuelInProgress();
             float buttonRow = g_items.front().y;
             bool reward = std::any_of(g_items.begin(), g_items.end(), [](const Focus& f) { return f.cls && strstr(f.cls, "widget_RewardWindow"); });
-            if (!g_lastItemWasCard && !duelButton) g_cardInfo.clear();  // I must not read a card the user has left
+            if (!g_lastItemWasCard && !duelButton) {  // I must not read a card the user has left
+                g_cardInfo.clear();
+                ++g_cardVersion;
+            }
             std::wstring tip;
             if (g_tipPending && g_tipAt + kTipBeforeMs >= first) {  // the description belongs to this focus change
                 DropScrolledLocked(g_tipFocus, g_tipAt);
@@ -591,13 +629,6 @@ static void AddTipLocked(const void* layer, std::wstring text) {
 
 constexpr char kCardClass[] = ".?AVwidget_Card@RIX@@";
 
-// "First. Second", without doubling a full stop the first already ends with.
-static void AppendSentence(std::wstring& out, const std::wstring& next) {
-    if (next.empty()) return;
-    if (!out.empty()) out += (out.back() == L'.' || out.back() == L'!' || out.back() == L'?') ? L" " : L". ";
-    out += next;
-}
-
 // A card shows its name as part of its picture, so it is looked up by the card id the widget holds. Browsing
 // says the name (and New, and where it is); I says the rest: kind/attribute/type/level/ATK/DEF (the details
 // panel shows those as bare numbers or pictures), the card's text and its count badge.
@@ -605,17 +636,23 @@ static void MakeCardFocus(const uint8_t* widget, Focus& focus) {
     int16_t id = *(const int16_t*)(widget + kCardIdOffset);
     const wchar_t* name = id != -1 && g_cardName ? g_cardName(id) : nullptr;
     if (!name || !*name) return;
-    std::wstring info = CleanForSpeech(name);
-    std::vector<Focus::Piece> card{{nullptr, info}};
+    std::wstring cardName = CleanForSpeech(name);
+    std::vector<Focus::Piece> card{{nullptr, cardName}};
     if (IsNewCard(id)) card.push_back({nullptr, L"New"});
     if (std::wstring position = CardPosition(widget); !position.empty()) card.push_back({nullptr, position});
-    AppendSentence(info, CardSummary(id));
-    if (const wchar_t* text = g_cardText ? g_cardText(id) : nullptr; text && *text) AppendSentence(info, CleanForSpeech(text));
-    for (const Focus::Piece& badge : focus.pieces) AppendSentence(info, badge.text + L" copies");
+    std::wstring text;
+    if (const wchar_t* raw = g_cardText ? g_cardText(id) : nullptr; raw && *raw) text = CleanForSpeech(raw);
+    std::wstring copies;
+    for (const Focus::Piece& badge : focus.pieces) {
+        if (!copies.empty()) copies += L'\n';
+        copies += badge.text + L" copies";
+    }
+    std::wstring info = BuildCardInfo(cardName, CardSummary(id), text, copies);
     focus.pieces = std::move(card);
     focus.card = true;
     std::lock_guard lock(g_mutex);
     g_cardInfo = std::move(info);
+    ++g_cardVersion;
 }
 
 // The cursor stays on a card widget while the card in it changes (the trunk scrolls past its last visible row,
@@ -826,6 +863,7 @@ ULONGLONG MenuLastGameKeyAt() { return g_gameKeyAt; }
 void MenuSetCardInfo(const std::wstring& info) {
     std::lock_guard lock(g_mutex);
     g_cardInfo = info;
+    ++g_cardVersion;
 }
 
 void MenuSuppressLive(const std::wstring& containing) {
