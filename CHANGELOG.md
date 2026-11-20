@@ -2,6 +2,20 @@
 
 The newest version comes first. Each version lists the features and fixes you'll notice; small internal changes are left out.
 
+## Unreleased
+
+### New
+
+- **The trunk's filter screen reads properly.** Press Space in the trunk to open Select Filters:
+  - A category with a filter set says so: "Attribute, Filtered". Backing out of a category's options repeats the category's name, instead of "Trunk, Select Filters".
+  - Number filters (Level, Rank, ATK, DEF, Link Rating, Pendulum Scale) read the row you're on in words: "exactly 4", "at most 4", "at least 5", "Between at least 5", "and at most 7". Page Up and Page Down say the new value. Enter says "Selected" or "Not selected", and a row you come back to says "at most 4, Selected".
+  - After each filter change you hear how many cards the trunk shows: "642 of 1694 cards", or "1694 cards" when nothing is filtered. This works for options, number filters, Text Search, Reset to Any (3) and Toggle Filter (X).
+- **Card counts in the deck editor.** When a section's count changes, for example after you move a card into your Deck, the new count is read: "41 cards".
+
+### Fixed
+
+- **No more crash when opening a number filter.** Opening Level, Rank, ATK and the other number filters in the trunk's filter screen crashed the game.
+
 ## 0.1.7 (November 19, 2026)
 
 ### New
