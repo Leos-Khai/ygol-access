@@ -160,6 +160,7 @@ struct Focus {
     bool card = false;          // a card, spoken with its name, summary and text
     bool highlight = false;     // from a label drawn in the focus colour (OnHighlight), at row y
     bool relabel = false;       // the focused row's labels changing as its list scrolls
+    bool ownText = false;       // text chosen by the mod: labels filled in later don't join it
     float y = 0;
 };
 
@@ -344,7 +345,7 @@ void MenuReadCardChunk(int direction) {
 // After a card, the details panel only repeats it: keep just the help bar's description.
 static void KeepKnownDescriptionsLocked(Focus& f) {
     std::erase_if(f.pieces, [](const Focus::Piece& p) {
-        return std::find(g_descriptionLayers.begin(), g_descriptionLayers.end(), p.layer) == g_descriptionLayers.end();
+        return p.layer != kAfterText && std::find(g_descriptionLayers.begin(), g_descriptionLayers.end(), p.layer) == g_descriptionLayers.end();
     });
 }
 
@@ -353,7 +354,8 @@ static void KeepKnownDescriptionsLocked(Focus& f) {
 static void DropScrolledLocked(Focus& f, ULONGLONG at) {
     if ((at > g_lastScrollAt ? at - g_lastScrollAt : g_lastScrollAt - at) > 100) return;
     std::erase_if(f.pieces, [](const Focus::Piece& p) {
-        return std::find(g_descriptionLayers.begin(), g_descriptionLayers.end(), p.layer) == g_descriptionLayers.end() &&
+        return p.layer != kAfterText &&  // the mod's own text (a card count) is never a scrolled label
+               std::find(g_descriptionLayers.begin(), g_descriptionLayers.end(), p.layer) == g_descriptionLayers.end() &&
                std::find(g_focusLayers.begin(), g_focusLayers.end(), p.layer) == g_focusLayers.end();
     });
 }
@@ -376,10 +378,11 @@ static void DropContainers(std::vector<Focus>& items) {
         name = name.substr(4, name.find('@') - 4);  // ".?AVwidget_X@..." -> "widget_X"
         return name.ends_with("Bar") || name == "widget_ButtonHelp";  // and helper buttons
     };
-    bool hasNonBar = std::any_of(items.begin(), items.end(), [&](const Focus& f) { return !isBar(f); });
+    if (std::any_of(items.begin(), items.end(), [&](const Focus& f) { return !isBar(f); })) std::erase_if(items, isBar);
+    // Only against what is left: a panel whose helper buttons were just dropped (the Level filter's number
+    // options) is the item, not their container.
     std::vector<Focus> kept;
     for (const Focus& f : items) {
-        if (hasNonBar && isBar(f)) continue;
         if (std::none_of(items.begin(), items.end(), [&](const Focus& other) { return contains(f, other); })) kept.push_back(f);
     }
     items = std::move(kept);
@@ -449,6 +452,7 @@ static void AnnouncerThread() {
             }
             // A list and the entry in it can gain focus together; the entry is what the user is on.
             DropContainers(g_items);
+            if (g_items.empty()) continue;
             // Switching section (deck editor) focuses the new section's card, then restores the cursor card of the
             // section left behind. The first is where the user is.
             if (auto firstCard = std::find_if(g_items.begin(), g_items.end(), [](const Focus& f) { return f.card; }); firstCard != g_items.end()) {
@@ -731,6 +735,97 @@ static void __fastcall RefreshCheckHook(uint8_t* option) {
     AnnounceItem({{{nullptr, after == kCheckedSprite ? L"Selected" : L"Not selected"}}, {}, GetTickCount64()});
 }
 
+// Deck editor number filters (widget_TrunkFilterNumOptions: Level, Rank, ATK, ...) hold five row widgets
+// (widget_TrunkFilterNumOption) at +0x180 + i*0xE0. A row: +0x90 its value layer, +0xB0 its label layer ("≤",
+// "Between ≥"), +0xC0 highlighted (the cursor is on it), set by SetHighlighted (0x1408BCAD0). The rows never take
+// widget focus, so the panel's focus says the highlighted row and SetHighlighted says the rest.
+// The panel's check marks are sprite slots at +0x5E0 + mode*0x30 (0x150 = checked, index at +0x24 as in a mask
+// option); rows 0-3 are modes 0-3, row 4 (Between's upper bound) is mode 3 too. RefreshChecks (0x1408BE0C0) sets
+// them after Enter.
+constexpr char kNumOptionsClass[] = ".?AVwidget_TrunkFilterNumOptions@RIX@@";
+constexpr size_t kNumRowsOffset = 0x180, kNumRowSize = 0xE0, kNumRowCount = 5, kNumRowHighlighted = 0xC0;
+static std::vector<const void*> g_numRowLayers;  // under g_mutex: rows OnHighlight leaves to SetHighlighted
+static const uint8_t* g_numPanel;  // the last focused panel; game thread only
+
+static bool NumRowChecked(const uint8_t* panel, size_t r) {
+    return *(const int*)(panel + 0x5E0 + std::min<size_t>(r, 3) * 0x30 + 0x24) == kCheckedSprite;
+}
+
+// The highlighted row of the remembered panel (kNumRowCount if none), if `row` is null or one of its rows.
+static size_t NumRowIndex(const uint8_t* row) {
+    for (size_t r = 0; g_numPanel && r < kNumRowCount; ++r) {
+        const uint8_t* at = g_numPanel + kNumRowsOffset + r * kNumRowSize;
+        if (row ? at == row : at[kNumRowHighlighted] != 0) return r;
+    }
+    return kNumRowCount;
+}
+
+static std::wstring NumRowText(const uint8_t* row) {
+    auto text = [&](size_t offset) {
+        const void* layer = *(const void* const*)(row + offset);
+        return layer ? CleanForSpeech(LayerText(layer)) : L"";
+    };
+    std::wstring label = text(0xB0), out;
+    for (wchar_t c : label) {  // speech drops the symbols
+        out += c == L'≤' ? L"at most" : c == L'≥' ? L"at least" : c == L'=' ? L"exactly" : std::wstring(1, c);
+    }
+    std::wstring value = text(0x90);
+    if (!value.empty()) out += L" " + value;
+    if (size_t r = NumRowIndex(row); r < kNumRowCount && NumRowChecked(g_numPanel, r)) out += L", Selected";
+    return out;
+}
+
+using RefreshChecksFn = void(__fastcall*)(uint8_t* panel);
+static RefreshChecksFn g_refreshNumChecks;
+static void __fastcall RefreshNumChecksHook(uint8_t* panel) {
+    size_t r = panel == g_numPanel ? NumRowIndex(nullptr) : kNumRowCount;
+    bool before = r < kNumRowCount && NumRowChecked(panel, r);
+    g_refreshNumChecks(panel);
+    if (r == kNumRowCount || NumRowChecked(panel, r) == before || GetTickCount64() - MenuLastGameKeyAt() > 500) return;
+    AnnounceItem({{{nullptr, before ? L"Not selected" : L"Selected"}}, {}, GetTickCount64()});
+}
+
+using SetHighlightedFn = void(__fastcall*)(uint8_t* row, char on);
+static SetHighlightedFn g_setRowHighlighted;
+static void __fastcall SetRowHighlightedHook(uint8_t* row, char on) {
+    bool was = row[kNumRowHighlighted] != 0;
+    g_setRowHighlighted(row, on);
+    {
+        std::lock_guard lock(g_mutex);
+        for (size_t offset : {0x90, 0xB0}) {
+            const void* layer = *(const void* const*)(row + offset);
+            if (std::find(g_numRowLayers.begin(), g_numRowLayers.end(), layer) == g_numRowLayers.end()) g_numRowLayers.push_back(layer);
+        }
+        if (g_numRowLayers.size() > 64) g_numRowLayers.erase(g_numRowLayers.begin(), g_numRowLayers.end() - 64);
+    }
+    // Screens are built at startup, highlighting rows nobody is looking at: only a key's doing is news.
+    if (!on || was || GetTickCount64() - MenuLastGameKeyAt() > 500) return;
+    std::wstring text = NumRowText(row);
+    Log("number row: %s", ToUtf8(text).c_str());
+    if (!text.empty()) AnnounceItem({{{nullptr, std::move(text)}}, {}, GetTickCount64()});
+}
+
+// SetValue (0x1408BCB70) clamps and stores the row's value (+0xC4) and rewrites its value label: PgUp/PgDn.
+using SetValueFn = void(__fastcall*)(uint8_t* row, int value);
+static SetValueFn g_setRowValue;
+static void __fastcall SetRowValueHook(uint8_t* row, int value) {
+    int before = *(const int*)(row + 0xC4);
+    g_setRowValue(row, value);
+    const void* layer = *(const void* const*)(row + 0x90);
+    if (*(const int*)(row + 0xC4) == before || !row[kNumRowHighlighted] || !layer || GetTickCount64() - MenuLastGameKeyAt() > 500) return;
+    std::wstring text = CleanForSpeech(LayerText(layer));
+    Log("number value: %s", ToUtf8(text).c_str());
+    if (!text.empty()) AnnounceItem({{{nullptr, std::move(text)}}, {}, GetTickCount64()});
+}
+
+// Deck editor filter categories (widget_TrunkFilterCategory): a category with a filter set shows a check mark,
+// sprite slot +0x150 (index at +0x24). A category keeps its focus while its options panel is open, so leaving the
+// panel (Backspace) never focuses it again: the panel losing focus says it instead.
+constexpr char kFilterCategoryClass[] = ".?AVwidget_TrunkFilterCategory@RIX@@";
+static uint8_t* g_filterCategory;  // the last focused category; game thread only
+
+static void AnnounceWidget(uint8_t* widget);
+
 static void __fastcall SetFocusedHook(uint8_t* widget, char focused) {
     bool was = widget[kFocusedOffset] != 0;
     g_setFocused(widget, focused);
@@ -741,10 +836,18 @@ static void __fastcall SetFocusedHook(uint8_t* widget, char focused) {
     if (!focused && was) {
         if (lostAt.size() > 256) lostAt.clear();  // widgets come and go; old entries are useless
         lostAt[widget] = now;
+        const char* cls = g_filterCategory ? ClassName(widget) : nullptr;
+        if (cls && (strcmp(cls, kNumOptionsClass) == 0 || strcmp(cls, ".?AVwidget_TrunkFilterMaskOptions@RIX@@") == 0)) {
+            const char* category = ClassName(g_filterCategory);  // checked before use: it may be gone
+            if (category && strcmp(category, kFilterCategoryClass) == 0 && g_filterCategory[kFocusedOffset]) AnnounceWidget(g_filterCategory);
+        }
     }
     if (!focused || was) return;  // only a change to focused; some menus call this every frame
     if (auto it = lostAt.find(widget); it != lostAt.end() && now - it->second < 100) return;
+    AnnounceWidget(widget);
+}
 
+static void AnnounceWidget(uint8_t* widget) {
     Focus focus = WidgetFocus(widget);
     const char* cls = ClassName(widget);
     focus.cls = cls;
@@ -758,6 +861,17 @@ static void __fastcall SetFocusedHook(uint8_t* widget, char focused) {
     }
     if (cls && strcmp(cls, kFilterOptionClass) == 0 && *(const int*)(widget + kOptionCheckOffset) == kCheckedSprite)
         focus.pieces.push_back({kAfterText, L"Selected"});
+    if (cls && strcmp(cls, kFilterCategoryClass) == 0) {
+        g_filterCategory = widget;
+        if (*(const int*)(widget + 0x150 + 0x24) == kCheckedSprite) focus.pieces.push_back({kAfterText, L"Filtered"});
+    }
+    if (cls && strcmp(cls, kNumOptionsClass) == 0) {
+        focus.pieces.clear();
+        focus.ownText = true;
+        g_numPanel = widget;
+        if (size_t r = NumRowIndex(nullptr); r < kNumRowCount)
+            focus.pieces.push_back({nullptr, NumRowText(widget + kNumRowsOffset + r * kNumRowSize)});
+    }
     // Sort bars change their label on a key press (X in the trunk); remember the labels to announce that.
     if (cls && strstr(cls, "SortBar")) {
         std::lock_guard lock(g_mutex);
@@ -926,6 +1040,17 @@ static void OnTextChanged(const void* layer, std::wstring_view text, float x, fl
             AnnounceItem({{{layer, L"Sort by " + clean}}, {}, GetTickCount64()});
             return;
         }
+        // The deck editor's trunk count after a filter change ("221 / 1694", or "1694 cards" again): queued
+        // behind the option's "Selected".
+        static const std::wregex shown(L"(\\d+) / (\\d+)|\\d+ cards");
+        std::wsmatch m;
+        if (!moved && std::regex_match(clean, m, shown)) {
+            std::wstring count = m[1].matched ? m.str(1) + L" of " + m.str(2) + L" cards" : clean;
+            Log("card count: %s", ToUtf8(count).c_str());
+            std::lock_guard lock(g_mutex);
+            AddTipLocked(kAfterText, std::move(count));
+            return;
+        }
     }
     // Left/Right also move through grids; when they moved focus, what changes is the new item's details.
     bool focusMoved = GetTickCount64() - g_lastFocusAt < kTipWindowMs;
@@ -952,7 +1077,7 @@ static void OnTextChanged(const void* layer, std::wstring_view text, float x, fl
     for (Focus& f : g_items) {
         if (known) break;
         if (prompt && f.cls && strstr(f.cls, "widget_Help")) continue;  // the help bar is the key prompt strip
-        if (f.card) continue;  // a card's late badge belongs to its I info, not its name
+        if (f.card || f.ownText) continue;  // a card's late badge belongs to its I info, not its name
         if (std::find(f.drawables.begin(), f.drawables.end(), layer) == f.drawables.end()) continue;
         if (std::none_of(f.pieces.begin(), f.pieces.end(), [&](const Focus::Piece& p) { return p.layer == layer; }))
             f.pieces.push_back({layer, std::move(clean)});
@@ -1036,6 +1161,7 @@ static void OnHighlight(const void* layer, float, float y) {
     {
         std::lock_guard lock(g_mutex);
         if (!duel && std::find(g_focusLayers.begin(), g_focusLayers.end(), layer) != g_focusLayers.end()) return;  // widget focus has it
+        if (std::find(g_numRowLayers.begin(), g_numRowLayers.end(), layer) != g_numRowLayers.end()) return;  // SetRowHighlightedHook has it
     }
     Focus row = RowFocus(y, layer);
     row.highlight = true;
@@ -1097,7 +1223,14 @@ bool MenuHooksInstall() {
     Hook(FindInGame("FilterOption::RefreshCheck",
              "40 53 48 83 EC 20 48 8B 81 00 01 00 00 48 8B D9 48 85 C0 74 ?? 8B 91 08 01 00 00 48 8D 0D"),
          (void*)&RefreshCheckHook, (void**)&g_refreshCheck, "FilterOption::RefreshCheck");
-    Hook(FindInGame("SetCard", "40 53 48 83 EC 20 48 8B D9 66 39 91 00 01 00 00 0F 84"),
+    Hook(FindInGame("NumOption::SetHighlighted",
+             "48 89 5C 24 08 48 89 74 24 10 57 48 83 EC 20 48 8B 99 B0 00 00 00 48 8B F1 88 91 C0 00 00 00"),
+         (void*)&SetRowHighlightedHook, (void**)&g_setRowHighlighted, "NumOption::SetHighlighted");
+    Hook(FindInGame("NumOption::SetValue", "40 53 48 83 EC 20 44 8B 81 CC 00 00 00 48 8B D9 8B 81 C8 00 00 00 41 3B C0"),
+         (void*)&SetRowValueHook, (void**)&g_setRowValue, "NumOption::SetValue");
+    Hook(FindInGame("NumOptions::RefreshChecks", "40 56 48 83 EC 20 48 8B 81 A8 09 00 00 48 8B F1 48 85 C0 74"),
+         (void*)&RefreshNumChecksHook, (void**)&g_refreshNumChecks, "NumOptions::RefreshChecks");
+    Hook(FindInGame("SetCard","40 53 48 83 EC 20 48 8B D9 66 39 91 00 01 00 00 0F 84"),
          (void*)&SetCardHook, (void**)&g_setCard, "widget_Card::SetCard");
     Hook(FindInGame("SetVolume", "48 89 5C 24 08 57 48 83 EC 30 0F 29 74 24 20 48 8D 3D ?? ?? ?? ?? 48 63 D9 85 D2 7F 04 33 D2"),
          (void*)&SetVolumeHook, (void**)&g_setVolume, "SetVolume");
